@@ -123,13 +123,13 @@ export async function evaluateGuess(params: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      "x-guess-number": String(params.guess_number),
     },
     body: JSON.stringify({
       puzzle_id: params.puzzle_id,
       guess_cells: params.guess_cells,
       used_clue: params.used_clue,
       magnets_used: params.magnets_used,
+      guess_number: params.guess_number,
     }),
   });
 

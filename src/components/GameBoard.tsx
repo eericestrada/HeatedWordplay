@@ -3,6 +3,7 @@ import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
 import { evaluateGuess, useMagnetServer } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 import { getMedal } from "../utils/scoring";
 import type {
   Puzzle,
@@ -36,6 +37,7 @@ export default function GameBoard({
   onComplete,
   onBack,
 }: GameBoardProps) {
+  const { user } = useAuth();
   const wordLength = puzzle.wordLength || puzzle.word.length;
 
   const [completedRows, setCompletedRows] = useState<CompletedRow[]>([]);
@@ -55,9 +57,10 @@ export default function GameBoard({
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState("");
 
-  // Use ref to track if we're using server-side evaluation
-  // For own puzzles or when puzzle ID is a number (mock), use client-side eval
-  const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10;
+  // Server-side evaluation for real puzzles from other users.
+  // Own puzzles and mock/local puzzles use client-side evaluation.
+  const isOwnPuzzle = !!user && puzzle.creator_id === user.id;
+  const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
 
   const totalCount = completedRows.length;
   const filledCount = grid.filter((c) => c.letter).length;

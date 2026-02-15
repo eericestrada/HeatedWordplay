@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type, x-guess-number",
+          "authorization, x-client-info, apikey, content-type",
       },
     });
   }
@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { puzzle_id, guess_cells, used_clue, magnets_used } =
+    const { puzzle_id, guess_cells, used_clue, magnets_used, guess_number } =
       await req.json();
 
     if (!puzzle_id || !guess_cells) {
@@ -193,10 +193,9 @@ Deno.serve(async (req: Request) => {
     };
 
     // If game is over (solved or max guesses), create the attempt record
-    if (solved || (req.headers.get("x-guess-number") && parseInt(req.headers.get("x-guess-number")!) >= MAX_GUESSES)) {
-      const guessNumber = parseInt(
-        req.headers.get("x-guess-number") || String(MAX_GUESSES),
-      );
+    const guessNum = guess_number ? parseInt(String(guess_number)) : 0;
+    if (solved || guessNum >= MAX_GUESSES) {
+      const guessNumber = guessNum || MAX_GUESSES;
       const isOwnPuzzle = puzzle.creator_id === user.id;
       const medal = getMedal(guessNumber, solved);
       const multiplier = getMultiplier(medal);
