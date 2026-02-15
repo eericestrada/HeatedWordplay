@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-bg-base: #0f0d0b;
+  --color-cream: #f5f0e8;
+  --color-amber: rgb(255, 180, 60);
+  --color-teal: #1a9e9e;
+  --color-green: #2d8a4e;
+  --color-red: rgb(255, 100, 100);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: #0f0d0b;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+@keyframes magnetPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(26, 158, 158, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(26, 158, 158, 0.6); }
+}
+
+button:hover {
+  filter: brightness(1.15);
+}
