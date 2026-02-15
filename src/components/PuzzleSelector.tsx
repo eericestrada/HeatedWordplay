@@ -8,7 +8,7 @@ import {
 
 interface PuzzleSelectorProps {
   puzzles: Puzzle[];
-  completedPuzzles: Record<number, CompletionStatus>;
+  completedPuzzles: Record<string | number, CompletionStatus>;
   onSelect: (puzzle: Puzzle) => void;
   onSubmitWord: () => void;
 }

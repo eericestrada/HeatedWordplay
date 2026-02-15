@@ -1,12 +1,17 @@
 export interface Puzzle {
-  id: number;
+  id: string | number;
   word: string;
   creator: string;
+  creator_id?: string;
   definition: string;
   clue: string | null;
   context: string | null;
   complexity: number;
   submittedAt: string;
+  wordLength?: number;
+  hasClue?: boolean;
+  hasAttempted?: boolean;
+  isPublic?: boolean;
 }
 
 export interface GridCell {
@@ -63,4 +68,19 @@ export interface ComplexityRange {
   icon: string;
   color: string;
   bg: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  puzzle_id: string;
+  puzzle_creator_username: string;
+  word_length: number;
+  medal: Medal | null;
+  total_guesses: number;
+  score: number;
+  is_own_puzzle: boolean;
+  completed_at: string;
 }
