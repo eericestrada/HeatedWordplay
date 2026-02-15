@@ -80,8 +80,9 @@ export default function App() {
   };
 
   return (
+    <div className="h-screen w-full flex justify-center" style={{ background: "#0f0d0b" }}>
     <div
-      className="h-screen flex flex-col relative overflow-hidden"
+      className="h-full flex flex-col relative overflow-hidden w-full max-w-[520px]"
       style={{
         background:
           "linear-gradient(165deg, #1a1410 0%, #0f0d0b 40%, #121016 100%)",
@@ -90,7 +91,7 @@ export default function App() {
     >
       {/* Ambient glow overlay */}
       <div
-        className="fixed inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none"
         style={{
           background:
             "radial-gradient(ellipse at 20% 0%, rgba(255,140,40,0.04) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(180,120,255,0.02) 0%, transparent 60%)",
@@ -240,6 +241,7 @@ export default function App() {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }
