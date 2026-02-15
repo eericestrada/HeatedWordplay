@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
+import { evaluateGuess, useMagnetServer } from "../lib/api";
 import { getMedal } from "../utils/scoring";
 import type {
   Puzzle,
   GridCell,
   CompletedRow,
+  ResultCell,
   LetterStates,
   Medal,
 } from "../types";
@@ -34,7 +36,7 @@ export default function GameBoard({
   onComplete,
   onBack,
 }: GameBoardProps) {
-  const wordLength = puzzle.word.length;
+  const wordLength = puzzle.wordLength || puzzle.word.length;
 
   const [completedRows, setCompletedRows] = useState<CompletedRow[]>([]);
   const [grid, setGrid] = useState<GridCell[]>(() => emptyGrid(wordLength));
@@ -50,6 +52,12 @@ export default function GameBoard({
   const [magnetsUsed, setMagnetsUsed] = useState(0);
   const [magnetMode, setMagnetMode] = useState(false);
   const [showMagnetConfirm, setShowMagnetConfirm] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalError, setEvalError] = useState("");
+
+  // Use ref to track if we're using server-side evaluation
+  // For own puzzles or when puzzle ID is a number (mock), use client-side eval
+  const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10;
 
   const totalCount = completedRows.length;
   const filledCount = grid.filter((c) => c.letter).length;
@@ -101,47 +109,223 @@ export default function GameBoard({
     });
   };
 
-  const useMagnet = (ch: string) => {
-    const answerLetters = puzzle.word.split("");
-    const correctPositions: number[] = [];
-    for (let i = 0; i < wordLength; i++) {
-      if (answerLetters[i] === ch) correctPositions.push(i);
-    }
-    let targetPos: number | null = null;
-    for (const pos of correctPositions) {
-      const cell = grid[pos];
-      if (!(cell.letter === ch && cell.pinned)) {
-        targetPos = pos;
-        break;
+  const useMagnet = async (ch: string) => {
+    if (useServerEval) {
+      // Server-side magnet — don't expose the answer
+      setEvaluating(true);
+      try {
+        const currentGrid = grid.map((c, i) => ({
+          letter: c.letter,
+          position: i,
+          pinned: c.pinned,
+        }));
+        const result = await useMagnetServer({
+          puzzle_id: puzzle.id as string,
+          letter: ch,
+          current_grid: currentGrid,
+        });
+        setEvaluating(false);
+        const tp = result.position;
+        setGrid((prev) => {
+          const next = prev.map((c) => ({ ...c }));
+          if (next[tp].letter && !next[tp].pinned) {
+            next[tp] = { letter: "", pinned: false };
+          }
+          next[tp] = { letter: ch, pinned: true };
+          return next;
+        });
+        setMagnetsUsed((prev) => prev + 1);
+        setMagnetMode(false);
+        showMsg(
+          magnetsUsed === 0
+            ? "🧲 Magnet used — 25% penalty"
+            : "🧲 Magnet used — 50% penalty",
+        );
+      } catch (err) {
+        setEvaluating(false);
+        const msg = err instanceof Error ? err.message : "Magnet failed";
+        if (msg === "Already placed") {
+          showMsg("Already placed!");
+        } else {
+          showMsg("Magnet error — try again");
+        }
+        setMagnetMode(false);
       }
-    }
-    if (targetPos === null) {
-      showMsg("Already placed!");
-      setMagnetMode(false);
-      return;
-    }
+    } else {
+      // Client-side magnet (mock/local puzzles)
+      const answerLetters = puzzle.word.split("");
+      const correctPositions: number[] = [];
+      for (let i = 0; i < wordLength; i++) {
+        if (answerLetters[i] === ch) correctPositions.push(i);
+      }
+      let targetPos: number | null = null;
+      for (const pos of correctPositions) {
+        const cell = grid[pos];
+        if (!(cell.letter === ch && cell.pinned)) {
+          targetPos = pos;
+          break;
+        }
+      }
+      if (targetPos === null) {
+        showMsg("Already placed!");
+        setMagnetMode(false);
+        return;
+      }
 
-    const tp = targetPos;
-    setGrid((prev) => {
-      const next = prev.map((c) => ({ ...c }));
-      if (next[tp].letter && !next[tp].pinned) {
-        next[tp] = { letter: "", pinned: false };
-      }
-      next[tp] = { letter: ch, pinned: true };
-      return next;
-    });
-    setMagnetsUsed((prev) => prev + 1);
-    setMagnetMode(false);
-    showMsg(
-      magnetsUsed === 0
-        ? "🧲 Magnet used — 25% penalty"
-        : "🧲 Magnet used — 50% penalty",
-    );
+      const tp = targetPos;
+      setGrid((prev) => {
+        const next = prev.map((c) => ({ ...c }));
+        if (next[tp].letter && !next[tp].pinned) {
+          next[tp] = { letter: "", pinned: false };
+        }
+        next[tp] = { letter: ch, pinned: true };
+        return next;
+      });
+      setMagnetsUsed((prev) => prev + 1);
+      setMagnetMode(false);
+      showMsg(
+        magnetsUsed === 0
+          ? "🧲 Magnet used — 25% penalty"
+          : "🧲 Magnet used — 50% penalty",
+      );
+    }
   };
+
+  // Process result from either server or client evaluation
+  const processGuessResult = useCallback(
+    (rowResult: ResultCell[], solved: boolean, newTotal: number, newRows: CompletedRow[]) => {
+      setCompletedRows(newRows);
+      setGrid(emptyGrid(wordLength));
+
+      // Sequential reveal with synced keyboard updates
+      setRevealingRow(newRows.length - 1);
+      setRevealedCount(0);
+      for (let t = 0; t < wordLength; t++) {
+        setTimeout(() => {
+          setRevealedCount(t + 1);
+          const cell = rowResult[t];
+          if (cell.letter) {
+            setLetterStates((prev) => {
+              const ns = { ...prev };
+              if (cell.status === "correct") ns[cell.letter] = "correct";
+              else if (
+                cell.status === "present" &&
+                ns[cell.letter] !== "correct"
+              )
+                ns[cell.letter] = "present";
+              else if (
+                cell.status === "absent" &&
+                ns[cell.letter] !== "correct" &&
+                ns[cell.letter] !== "present"
+              )
+                ns[cell.letter] = "absent";
+              return ns;
+            });
+          }
+        }, (t + 1) * 350);
+      }
+
+      const revealDuration = wordLength * 350 + 200;
+      if (solved || newTotal >= MAX_GUESSES) {
+        setTimeout(() => {
+          setGameOver(true);
+          onComplete(
+            newTotal,
+            getMedal(newTotal, solved),
+            clueRevealed,
+            magnetsUsed,
+            newRows,
+          );
+        }, revealDuration + 400);
+      }
+      setTimeout(() => setRevealingRow(-1), revealDuration);
+    },
+    [wordLength, onComplete, clueRevealed, magnetsUsed],
+  );
+
+  // Submit guess (async for server evaluation)
+  const submitGuess = useCallback(
+    async (currentGrid: GridCell[]) => {
+      const filledCells = currentGrid.filter((c) => c.letter);
+      if (filledCells.length < 2) {
+        setShake(true);
+        showMsg("Enter at least 2 letters");
+        setTimeout(() => setShake(false), 400);
+        return;
+      }
+
+      const newTotal = totalCount + 1;
+
+      if (useServerEval) {
+        // Server-side evaluation — answer never leaves the server
+        setEvaluating(true);
+        setEvalError("");
+        try {
+          const guessCells = currentGrid
+            .map((c, i) => ({ letter: c.letter, position: i }))
+            .filter((c) => c.letter);
+
+          const response = await evaluateGuess({
+            puzzle_id: puzzle.id as string,
+            guess_cells: guessCells,
+            used_clue: clueRevealed,
+            magnets_used: magnetsUsed,
+            guess_number: newTotal,
+          });
+
+          // Convert server result to our ResultCell format
+          const rowResult: ResultCell[] = Array.from({ length: wordLength }, (_, i) => {
+            const serverCell = response.result.find((c: { position: number }) => c.position === i);
+            return {
+              letter: serverCell?.letter || "",
+              status: serverCell?.status || null,
+            };
+          });
+
+          const solved = !!response.solved;
+          const newRows = [...completedRows, { result: rowResult }];
+
+          setEvaluating(false);
+          processGuessResult(rowResult, solved, newTotal, newRows);
+        } catch (err) {
+          setEvaluating(false);
+          const msg = err instanceof Error ? err.message : "Evaluation failed";
+          if (msg === "Already completed this puzzle") {
+            setEvalError("You've already completed this puzzle.");
+            showMsg("Already completed!");
+          } else {
+            setEvalError(msg);
+            showMsg("Error — try again");
+          }
+        }
+      } else {
+        // Client-side evaluation (fallback for mock/local puzzles)
+        const isFull = filledCells.length === wordLength;
+        const guessWord = currentGrid.map((c) => c.letter).join("");
+
+        const rowResult = evaluateCells(currentGrid, puzzle.word);
+        const solved = isFull && guessWord === puzzle.word;
+        const newRows = [...completedRows, { result: rowResult }];
+
+        processGuessResult(rowResult, solved, newTotal, newRows);
+      }
+    },
+    [
+      totalCount,
+      useServerEval,
+      puzzle.id,
+      puzzle.word,
+      clueRevealed,
+      magnetsUsed,
+      wordLength,
+      completedRows,
+      processGuessResult,
+    ],
+  );
 
   const handleKey = useCallback(
     (key: string) => {
-      if (gameOver || revealingRow !== -1) return;
+      if (gameOver || revealingRow !== -1 || evaluating) return;
       if (magnetMode) return;
 
       if (key === "⌫" || key === "Backspace") {
@@ -150,67 +334,7 @@ export default function GameBoard({
       }
 
       if (key === "ENTER" || key === "Enter") {
-        const filledCells = grid.filter((c) => c.letter);
-        if (filledCells.length < 2) {
-          setShake(true);
-          showMsg("Enter at least 2 letters");
-          setTimeout(() => setShake(false), 400);
-          return;
-        }
-
-        const isFull = filledCells.length === wordLength;
-        const guessWord = grid.map((c) => c.letter).join("");
-
-        const rowResult = evaluateCells(grid, puzzle.word);
-        const solved = isFull && guessWord === puzzle.word;
-        const newRows = [...completedRows, { result: rowResult }];
-        const newTotal = totalCount + 1;
-
-        setCompletedRows(newRows);
-        setGrid(emptyGrid(wordLength));
-
-        // Sequential reveal with synced keyboard updates
-        setRevealingRow(completedRows.length);
-        setRevealedCount(0);
-        for (let t = 0; t < wordLength; t++) {
-          setTimeout(() => {
-            setRevealedCount(t + 1);
-            const cell = rowResult[t];
-            if (cell.letter) {
-              setLetterStates((prev) => {
-                const ns = { ...prev };
-                if (cell.status === "correct") ns[cell.letter] = "correct";
-                else if (
-                  cell.status === "present" &&
-                  ns[cell.letter] !== "correct"
-                )
-                  ns[cell.letter] = "present";
-                else if (
-                  cell.status === "absent" &&
-                  ns[cell.letter] !== "correct" &&
-                  ns[cell.letter] !== "present"
-                )
-                  ns[cell.letter] = "absent";
-                return ns;
-              });
-            }
-          }, (t + 1) * 350);
-        }
-
-        const revealDuration = wordLength * 350 + 200;
-        if (solved || newTotal >= MAX_GUESSES) {
-          setTimeout(() => {
-            setGameOver(true);
-            onComplete(
-              newTotal,
-              getMedal(newTotal, solved),
-              clueRevealed,
-              magnetsUsed,
-              newRows,
-            );
-          }, revealDuration + 400);
-        }
-        setTimeout(() => setRevealingRow(-1), revealDuration);
+        submitGuess(grid);
         return;
       }
 
@@ -246,18 +370,14 @@ export default function GameBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       grid,
-      completedRows,
       gameOver,
       revealingRow,
+      evaluating,
       wordLength,
-      totalCount,
-      puzzle.word,
-      onComplete,
-      clueRevealed,
+      submitGuess,
       magnetMode,
       hasPins,
       filledCount,
-      magnetsUsed,
     ],
   );
 
@@ -405,7 +525,33 @@ export default function GameBoard({
 
       {/* Message */}
       <div className="h-[26px] flex items-center justify-center">
-        {message && (
+        {evaluating ? (
+          <div
+            className="font-body"
+            style={{
+              fontSize: "13px",
+              color: "rgba(255,180,60,0.7)",
+              background: "rgba(255,180,60,0.08)",
+              padding: "5px 16px",
+              borderRadius: "6px",
+            }}
+          >
+            Checking...
+          </div>
+        ) : evalError ? (
+          <div
+            className="font-body"
+            style={{
+              fontSize: "13px",
+              color: "rgba(255,100,100,0.8)",
+              background: "rgba(255,100,100,0.08)",
+              padding: "5px 16px",
+              borderRadius: "6px",
+            }}
+          >
+            {evalError}
+          </div>
+        ) : message ? (
           <div
             className="font-body"
             style={{
@@ -419,7 +565,7 @@ export default function GameBoard({
           >
             {message}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Grid */}

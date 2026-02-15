@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing auth header" }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -253,7 +253,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       },
     );
   }

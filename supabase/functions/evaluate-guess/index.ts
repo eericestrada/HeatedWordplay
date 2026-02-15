@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type",
+          "authorization, x-client-info, apikey, content-type, x-guess-number",
       },
     });
   }
@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing auth header" }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
     if (puzzleError || !puzzle) {
       return new Response(JSON.stringify({ error: "Puzzle not found" }), {
         status: 404,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -258,7 +258,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       },
     );
   }

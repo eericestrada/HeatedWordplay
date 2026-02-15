@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { SubmitWordData, DictionaryEntry } from "../types";
 import { calcComplexity, getComplexityRange } from "../utils/scoring";
-import { MOCK_DICTIONARY } from "../data/mockData";
+import { lookupWord, submitPuzzle } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
 type Step = "enter" | "pick" | "clue" | "inspo" | "review";
 
@@ -36,7 +37,7 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
   const complexity = word ? calcComplexity(word) : 0;
   const range = getComplexityRange(complexity);
 
-  const handleLookup = () => {
+  const handleLookup = async () => {
     const upper = word.toUpperCase().trim();
     if (upper.length < 4 || upper.length > 8) {
       setError("Word must be 4–8 letters");
@@ -46,15 +47,23 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
       setError("Letters only — no spaces or symbols");
       return;
     }
-    const defs = MOCK_DICTIONARY[upper];
-    if (!defs) {
-      setError("Not found in dictionary. Try another word.");
-      return;
-    }
-    setWord(upper);
-    setDefinitions(defs);
+    setSubmitting(true);
     setError("");
-    setStep("pick");
+    try {
+      const defs = await lookupWord(upper);
+      setSubmitting(false);
+      if (!defs) {
+        setError("Not found in dictionary. Try another word.");
+        return;
+      }
+      setWord(upper);
+      setDefinitions(defs);
+      setError("");
+      setStep("pick");
+    } catch {
+      setSubmitting(false);
+      setError("Failed to look up word. Please try again.");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -75,10 +84,32 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
     setStep("review");
   };
 
-  const handleSubmitFinal = () => {
+  const handleSubmitFinal = async () => {
     if (!selectedDef) return;
     setSubmitting(true);
-    setTimeout(() => {
+    setError("");
+    try {
+      // Get user's groups to auto-share with all of them
+      const { data: groups } = await supabase
+        .from("groups")
+        .select("id");
+
+      const shares = (groups || []).map((g: { id: string }) => ({
+        share_type: "group" as const,
+        target_id: g.id,
+        allow_reshare: false,
+      }));
+
+      await submitPuzzle({
+        word,
+        definition: selectedDef.definition,
+        part_of_speech: selectedDef.partOfSpeech,
+        clue: clue.trim() || null,
+        inspo: inspo.trim(),
+        is_public: false,
+        shares,
+      });
+
       onSubmit({
         word,
         definition: selectedDef.definition,
@@ -88,7 +119,10 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
         complexity,
         submittedAt: new Date().toISOString().split("T")[0],
       });
-    }, 600);
+    } catch (err) {
+      setSubmitting(false);
+      setError(err instanceof Error ? err.message : "Failed to submit puzzle. Please try again.");
+    }
   };
 
   const backBtn = (onClick: () => void, label = "← Back") => (
@@ -186,7 +220,7 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
 
         <button
           onClick={handleLookup}
-          disabled={word.length < 4}
+          disabled={word.length < 4 || submitting}
           className="font-body w-full rounded-lg"
           style={{
             fontSize: "15px",
@@ -201,15 +235,15 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
                 ? "rgba(255,180,60,0.1)"
                 : "rgba(255,255,255,0.03)",
             color:
-              word.length >= 4
+              word.length >= 4 && !submitting
                 ? "rgba(255,180,60,0.9)"
                 : "rgba(255,255,255,0.15)",
-            cursor: word.length >= 4 ? "pointer" : "default",
+            cursor: word.length >= 4 && !submitting ? "pointer" : "default",
             transition: "all 0.15s ease",
             letterSpacing: "0.04em",
           }}
         >
-          Look up word
+          {submitting ? "Looking up..." : "Look up word"}
         </button>
       </div>
     );
@@ -663,6 +697,20 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
           The definition{clue.trim() ? ", clue," : ""} and inspo are hidden
           until someone solves your puzzle.
         </div>
+
+        {error && (
+          <div
+            className="font-body w-full text-center rounded-lg"
+            style={{
+              fontSize: "13px",
+              color: "rgba(255,100,100,0.8)",
+              background: "rgba(255,100,100,0.08)",
+              padding: "10px 16px",
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         {/* Submit */}
         <button
