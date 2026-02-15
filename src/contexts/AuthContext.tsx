@@ -44,13 +44,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const fetchProfile = async (userId: string): Promise<UserProfile | null> => {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    if (error || !data) return null;
-    return data as UserProfile;
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      if (error) {
+        console.error("fetchProfile error:", error.message);
+        return null;
+      }
+      return data as UserProfile;
+    } catch (err) {
+      console.error("fetchProfile threw:", err);
+      return null;
+    }
   };
 
   const refreshProfile = async () => {
@@ -67,17 +75,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        setState({
-          user: session.user,
-          profile,
-          session,
-          loading: false,
-          needsUsername: !!profile && profile.username.startsWith("user_"),
-        });
+        try {
+          const profile = await fetchProfile(session.user.id);
+          setState({
+            user: session.user,
+            profile,
+            session,
+            loading: false,
+            needsUsername: !!profile && profile.username.startsWith("user_"),
+          });
+        } catch (err) {
+          console.error("Failed to fetch profile on init:", err);
+          setState((prev) => ({ ...prev, loading: false }));
+        }
       } else {
         setState((prev) => ({ ...prev, loading: false }));
       }
+    }).catch((err) => {
+      console.error("Failed to get session:", err);
+      setState((prev) => ({ ...prev, loading: false }));
     });
 
     // Listen for auth changes
@@ -85,18 +101,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        // Small delay for the trigger to create the profile
-        if (event === "SIGNED_IN") {
-          await new Promise((r) => setTimeout(r, 500));
+        try {
+          // Small delay for the trigger to create the profile
+          if (event === "SIGNED_IN") {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          const profile = await fetchProfile(session.user.id);
+          setState({
+            user: session.user,
+            profile,
+            session,
+            loading: false,
+            needsUsername: !!profile && profile.username.startsWith("user_"),
+          });
+        } catch (err) {
+          console.error("Failed to fetch profile on auth change:", err);
+          setState({
+            user: session.user,
+            profile: null,
+            session,
+            loading: false,
+            needsUsername: true,
+          });
         }
-        const profile = await fetchProfile(session.user.id);
-        setState({
-          user: session.user,
-          profile,
-          session,
-          loading: false,
-          needsUsername: !!profile && profile.username.startsWith("user_"),
-        });
       } else {
         setState({
           user: null,
