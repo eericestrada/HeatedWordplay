@@ -54,6 +54,7 @@ export interface SubmitWordData {
   inspo: string;
   complexity: number;
   submittedAt: string;
+  puzzleId: string;
 }
 
 export interface DictionaryEntry {
@@ -61,7 +62,14 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people";
+
+export interface ConnectedUser {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  shared_group_count: number;
+}
 
 export interface ComplexityRange {
   label: string;

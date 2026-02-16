@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { SubmitWordData, DictionaryEntry } from "../types";
 import { calcComplexity, getComplexityRange } from "../utils/scoring";
 import { lookupWord, submitPuzzle } from "../lib/api";
-import { supabase } from "../lib/supabase";
 
 type Step = "enter" | "pick" | "clue" | "inspo" | "review";
 
@@ -89,25 +88,15 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
     setSubmitting(true);
     setError("");
     try {
-      // Get user's groups to auto-share with all of them
-      const { data: groups } = await supabase
-        .from("groups")
-        .select("id");
-
-      const shares = (groups || []).map((g: { id: string }) => ({
-        share_type: "group" as const,
-        target_id: g.id,
-        allow_reshare: false,
-      }));
-
-      await submitPuzzle({
+      // Create puzzle with no shares — user picks sharing on the next screen
+      const result = await submitPuzzle({
         word,
         definition: selectedDef.definition,
         part_of_speech: selectedDef.partOfSpeech,
         clue: clue.trim() || null,
         inspo: inspo.trim(),
         is_public: false,
-        shares,
+        shares: [],
       });
 
       onSubmit({
@@ -118,6 +107,7 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
         inspo: inspo.trim(),
         complexity,
         submittedAt: new Date().toISOString().split("T")[0],
+        puzzleId: result.puzzle.id,
       });
     } catch (err) {
       setSubmitting(false);

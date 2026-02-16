@@ -79,6 +79,49 @@ export async function useMagnetServer(params: {
 }
 
 /**
+ * Add shares to an existing puzzle (groups or individual users).
+ * Uses direct client-side inserts — RLS allows puzzle creators to share.
+ */
+export async function addPuzzleShares(
+  puzzleId: string,
+  shares: Array<{ share_type: "group" | "user"; target_id: string }>,
+) {
+  if (shares.length === 0) return;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const rows = shares.map((s) => ({
+    puzzle_id: puzzleId,
+    share_type: s.share_type,
+    target_id: s.target_id,
+    shared_by: user.id,
+    allow_reshare: false,
+  }));
+
+  const { error } = await supabase.from("puzzle_shares").insert(rows);
+  if (error) throw new Error(error.message || "Failed to share puzzle");
+}
+
+/**
+ * Update a puzzle's public visibility.
+ * Only works if no other users have attempted the puzzle yet (RLS constraint).
+ */
+export async function updatePuzzlePublic(
+  puzzleId: string,
+  isPublic: boolean,
+) {
+  const { error } = await supabase
+    .from("puzzles")
+    .update({ is_public: isPublic })
+    .eq("id", puzzleId);
+
+  if (error) throw new Error(error.message || "Failed to update puzzle");
+}
+
+/**
  * Evaluate a guess via Edge Function.
  * The answer word never leaves the server.
  */

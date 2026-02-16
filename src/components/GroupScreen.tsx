@@ -191,20 +191,19 @@ export default function GroupScreen({ onReady, manage = false }: GroupScreenProp
     setSubmitting(true);
     setError("");
 
-    const { data: group, error: lookupErr } = await supabase
-      .from("groups")
-      .select("id")
-      .eq("invite_code", trimmed)
-      .single();
+    // Use SECURITY DEFINER function to look up group by invite code
+    // (groups are hidden from non-members via RLS)
+    const { data: groupId, error: lookupErr } = await supabase
+      .rpc("lookup_group_by_invite_code", { p_code: trimmed });
 
-    if (lookupErr || !group) {
+    if (lookupErr || !groupId) {
       setError("Invalid invite code");
       setSubmitting(false);
       return;
     }
 
     const { error: joinErr } = await supabase.from("group_members").insert({
-      group_id: group.id,
+      group_id: groupId,
       user_id: profile.id,
     });
 

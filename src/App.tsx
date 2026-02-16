@@ -7,6 +7,8 @@ import GameBoard from "./components/GameBoard";
 import VictoryScreen from "./components/VictoryScreen";
 import PuzzleSelector from "./components/PuzzleSelector";
 import SubmitWord from "./components/SubmitWord";
+import ShareScreen from "./components/ShareScreen";
+import PeopleScreen from "./components/PeopleScreen";
 import ActivityFeed from "./components/ActivityFeed";
 import { supabase } from "./lib/supabase";
 import type {
@@ -40,6 +42,7 @@ export default function App() {
   const [groupReady, setGroupReady] = useState(false);
   const [groups, setGroups] = useState<Array<{ id: string; name: string; invite_code: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
 
   // Fetch groups
   const fetchGroups = useCallback(async () => {
@@ -169,10 +172,8 @@ export default function App() {
   };
 
   const handleSubmitWord = (data: SubmitWordData) => {
-    // In Phase C, SubmitWord calls the Edge Function directly.
-    // Here we just refresh and show success.
     const newPuzzle: Puzzle = {
-      id: crypto.randomUUID(),
+      id: data.puzzleId,
       word: data.word,
       creator: profile?.display_name || profile?.username || "You",
       creator_id: user?.id || "",
@@ -193,6 +194,7 @@ export default function App() {
     }));
     setScreen("submitted");
     setSelectedPuzzle(newPuzzle);
+    setSubmittedPuzzleId(data.puzzleId);
     // Refresh from server after a moment
     setTimeout(fetchPuzzles, 1000);
   };
@@ -348,6 +350,19 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setScreen("people")}
+              className="font-body"
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.3)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              👤 People
+            </button>
+            <button
               onClick={() => setScreen("groups")}
               className="font-body"
               style={{
@@ -425,81 +440,22 @@ export default function App() {
       {screen === "groups" && (
         <GroupScreen manage onReady={() => { fetchGroups(); setScreen("select"); }} />
       )}
+      {screen === "people" && (
+        <PeopleScreen onBack={handleBack} />
+      )}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={handleBack} />
       )}
-      {screen === "submitted" && selectedPuzzle && (
-        <div
-          className="flex flex-col items-center gap-6 max-w-[480px] mx-auto"
-          style={{
-            padding: "32px 20px",
-            animation: "fadeUp 0.5s ease",
+      {screen === "submitted" && selectedPuzzle && submittedPuzzleId && (
+        <ShareScreen
+          puzzle={selectedPuzzle}
+          puzzleId={submittedPuzzleId}
+          groups={groups}
+          onDone={() => {
+            setSubmittedPuzzleId(null);
+            handleBack();
           }}
-        >
-          <div style={{ fontSize: "48px", lineHeight: 1 }}>✨</div>
-          <div
-            className="font-display text-center"
-            style={{
-              fontSize: "24px",
-              fontWeight: 700,
-              color: "#f5f0e8",
-            }}
-          >
-            Puzzle submitted!
-          </div>
-          <div
-            className="font-body text-center"
-            style={{
-              fontSize: "14px",
-              color: "rgba(255,255,255,0.4)",
-              lineHeight: 1.5,
-            }}
-          >
-            Your friends can now try to guess{" "}
-            <strong style={{ color: "rgba(255,180,60,0.8)" }}>
-              {selectedPuzzle.word}
-            </strong>
-            . The definition and inspo stay hidden until they solve it.
-          </div>
-
-          {/* Word tiles */}
-          <div className="flex gap-1.5 justify-center">
-            {selectedPuzzle.word.split("").map((ch, i) => (
-              <div
-                key={i}
-                className="font-mono font-bold flex items-center justify-center rounded-lg"
-                style={{
-                  width: "clamp(36px, 10vw, 52px)",
-                  height: "clamp(36px, 10vw, 52px)",
-                  fontSize: "clamp(18px, 5vw, 24px)",
-                  border: "2px solid rgba(45,138,78,0.4)",
-                  backgroundColor: "rgba(45,138,78,0.08)",
-                  color: "#f5f0e8",
-                }}
-              >
-                {ch}
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={handleBack}
-            className="font-body rounded-lg"
-            style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              padding: "12px 32px",
-              border: "1px solid rgba(255,180,60,0.3)",
-              background: "rgba(255,180,60,0.08)",
-              color: "rgba(255,180,60,0.9)",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-              letterSpacing: "0.04em",
-            }}
-          >
-            Back to puzzles
-          </button>
-        </div>
+        />
       )}
     </>,
     /* showTitle */ screen !== "play",
