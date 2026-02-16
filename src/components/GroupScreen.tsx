@@ -31,6 +31,8 @@ interface GroupActivity {
 
 interface GroupScreenProps {
   onReady: () => void;
+  /** When true, skip auto-proceed and show the group list for management */
+  manage?: boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -63,7 +65,7 @@ function timeAgo(dateStr: string): string {
   });
 }
 
-export default function GroupScreen({ onReady }: GroupScreenProps) {
+export default function GroupScreen({ onReady, manage = false }: GroupScreenProps) {
   const { profile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,11 +98,12 @@ export default function GroupScreen({ onReady }: GroupScreenProps) {
   }, [fetchGroups]);
 
   // Auto-proceed if user has groups and we're on the list view (initial load)
+  // Skip auto-proceed when in manage mode (user clicked "Groups" button)
   useEffect(() => {
-    if (!loading && groups.length > 0 && mode === "list") {
+    if (!manage && !loading && groups.length > 0 && mode === "list") {
       onReady();
     }
-  }, [loading, groups.length, mode, onReady]);
+  }, [manage, loading, groups.length, mode, onReady]);
 
   const fetchMembers = async (groupId: string) => {
     setMembersLoading(true);

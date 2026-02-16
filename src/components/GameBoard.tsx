@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
-import { evaluateGuess, useMagnetServer } from "../lib/api";
+import { evaluateGuess, useMagnetServer, lookupWord } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { getMedal } from "../utils/scoring";
 import type {
@@ -257,6 +257,21 @@ export default function GameBoard({
         return;
       }
 
+      // Dictionary validation for full-word guesses
+      const isFull = filledCells.length === wordLength;
+      if (isFull) {
+        const guessWord = currentGrid.map((c) => c.letter).join("");
+        setEvaluating(true);
+        const dictResult = await lookupWord(guessWord);
+        setEvaluating(false);
+        if (!dictResult) {
+          setShake(true);
+          showMsg("Not a valid word");
+          setTimeout(() => setShake(false), 400);
+          return;
+        }
+      }
+
       const newTotal = totalCount + 1;
 
       if (useServerEval) {
@@ -303,7 +318,6 @@ export default function GameBoard({
         }
       } else {
         // Client-side evaluation (fallback for mock/local puzzles)
-        const isFull = filledCells.length === wordLength;
         const guessWord = currentGrid.map((c) => c.letter).join("");
 
         const rowResult = evaluateCells(currentGrid, puzzle.word);
@@ -492,10 +506,7 @@ export default function GameBoard({
   }
 
   return (
-    <div className="flex flex-col h-full max-w-[520px] mx-auto px-5">
-      {/* Spacer pushes content to bottom */}
-      <div className="flex-1 min-h-2" />
-
+    <div className="flex flex-col h-full max-w-[520px] mx-auto px-5 justify-end">
       {/* Header */}
       <div className="flex items-center justify-between w-full py-2">
         <button
@@ -572,9 +583,12 @@ export default function GameBoard({
       </div>
 
       {/* Grid */}
-      <div className="flex flex-col gap-1.5 items-center py-1">
+      <div className="flex flex-col gap-1.5 items-center py-2">
         {displayRows}
       </div>
+
+      {/* Flexible spacer between grid and controls */}
+      <div className="flex-1 min-h-1 max-h-12" />
 
       {/* Clue dialog (dismissable) */}
       {showClueDialog && (
@@ -770,15 +784,15 @@ export default function GameBoard({
           style={{
             fontSize: "11px",
             color: "rgba(255,255,255,0.15)",
-            paddingBottom: "12px",
+            paddingBottom: "4px",
           }}
         >
           Tap a letter to pin it in place
         </div>
       )}
 
-      {/* Bottom padding */}
-      <div className="h-3 shrink-0" />
+      {/* Bottom safe area */}
+      <div className="h-1 shrink-0" />
     </div>
   );
 }

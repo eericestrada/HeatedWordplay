@@ -423,7 +423,7 @@ export default function App() {
         />
       )}
       {screen === "groups" && (
-        <GroupScreen onReady={() => { fetchGroups(); setScreen("select"); }} />
+        <GroupScreen manage onReady={() => { fetchGroups(); setScreen("select"); }} />
       )}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={handleBack} />
