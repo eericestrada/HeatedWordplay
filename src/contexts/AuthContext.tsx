@@ -72,38 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        try {
-          const profile = await fetchProfile(session.user.id);
-          setState({
-            user: session.user,
-            profile,
-            session,
-            loading: false,
-            needsUsername: !!profile && profile.username.startsWith("user_"),
-          });
-        } catch (err) {
-          console.error("Failed to fetch profile on init:", err);
-          setState((prev) => ({ ...prev, loading: false }));
-        }
-      } else {
-        setState((prev) => ({ ...prev, loading: false }));
-      }
-    }).catch((err) => {
-      console.error("Failed to get session:", err);
-      setState((prev) => ({ ...prev, loading: false }));
-    });
+    let initialized = false;
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const handleSession = async (session: Session | null, event?: string) => {
       if (session?.user) {
         try {
-          // Small delay for the trigger to create the profile
-          if (event === "SIGNED_IN") {
+          // Small delay on fresh sign-in for the DB trigger to create the profile
+          if (event === "SIGNED_IN" && initialized) {
             await new Promise((r) => setTimeout(r, 500));
           }
           const profile = await fetchProfile(session.user.id);
@@ -115,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             needsUsername: !!profile && profile.username.startsWith("user_"),
           });
         } catch (err) {
-          console.error("Failed to fetch profile on auth change:", err);
+          console.error("Failed to fetch profile:", err);
           setState({
             user: session.user,
             profile: null,
@@ -133,9 +108,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           needsUsername: false,
         });
       }
+    };
+
+    // Listen for auth changes (also fires INITIAL_SESSION on setup)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      await handleSession(session, event);
+      initialized = true;
     });
 
-    return () => subscription.unsubscribe();
+    // Safety timeout — if onAuthStateChange hasn't resolved in 5s, force loading off
+    const timeout = setTimeout(() => {
+      setState((prev) => {
+        if (prev.loading) {
+          console.warn("Auth initialization timed out — forcing loading off");
+          return { ...prev, loading: false };
+        }
+        return prev;
+      });
+    }, 5000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
