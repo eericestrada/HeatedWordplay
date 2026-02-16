@@ -1,8 +1,6 @@
 import { supabase } from "./supabase";
 import type { DictionaryEntry } from "../types";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
 /**
  * Look up a word using the free dictionary API.
  * Returns definitions or null if word not found.
@@ -38,6 +36,7 @@ export async function lookupWord(
 
 /**
  * Submit a new puzzle via Edge Function.
+ * Uses supabase.functions.invoke() for automatic auth and CORS handling.
  */
 export async function submitPuzzle(params: {
   word: string;
@@ -52,23 +51,12 @@ export async function submitPuzzle(params: {
     allow_reshare: boolean;
   }>;
 }) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-word`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(params),
+  const { data, error } = await supabase.functions.invoke("submit-word", {
+    body: params,
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Failed to submit puzzle");
+  if (error) throw new Error(error.message || "Failed to submit puzzle");
+  if (data?.error) throw new Error(data.error);
   return data;
 }
 
@@ -81,23 +69,12 @@ export async function useMagnetServer(params: {
   letter: string;
   current_grid: Array<{ letter: string; position: number; pinned: boolean }>;
 }) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/use-magnet`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(params),
+  const { data, error } = await supabase.functions.invoke("use-magnet", {
+    body: params,
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Failed to use magnet");
+  if (error) throw new Error(error.message || "Failed to use magnet");
+  if (data?.error) throw new Error(data.error);
   return data as { position: number; letter: string };
 }
 
@@ -112,28 +89,17 @@ export async function evaluateGuess(params: {
   magnets_used: number;
   guess_number: number;
 }) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/evaluate-guess`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({
+  const { data, error } = await supabase.functions.invoke("evaluate-guess", {
+    body: {
       puzzle_id: params.puzzle_id,
       guess_cells: params.guess_cells,
       used_clue: params.used_clue,
       magnets_used: params.magnets_used,
       guess_number: params.guess_number,
-    }),
+    },
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Failed to evaluate guess");
+  if (error) throw new Error(error.message || "Failed to evaluate guess");
+  if (data?.error) throw new Error(data.error);
   return data;
 }

@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
     if (!puzzle_id || !guess_cells) {
       return new Response(
         JSON.stringify({ error: "Missing puzzle_id or guess_cells" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
       );
     }
 
@@ -163,7 +163,7 @@ Deno.serve(async (req: Request) => {
     if (existingAttempt) {
       return new Response(
         JSON.stringify({ error: "Already completed this puzzle" }),
-        { status: 409, headers: { "Content-Type": "application/json" } },
+        { status: 409, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
       );
     }
 

@@ -327,19 +327,34 @@ export default function App() {
               </span>
             )}
           </div>
-          <button
-            onClick={signOut}
-            className="font-body"
-            style={{
-              fontSize: "11px",
-              color: "rgba(255,255,255,0.2)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setScreen("groups")}
+              className="font-body"
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.3)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              👥 Groups
+            </button>
+            <button
+              onClick={signOut}
+              className="font-body"
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.2)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       )}
 
@@ -387,6 +402,9 @@ export default function App() {
           rows={resultData.rows}
           onBack={handleBack}
         />
+      )}
+      {screen === "groups" && (
+        <GroupScreen onReady={() => { fetchGroups(); setScreen("select"); }} />
       )}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={handleBack} />

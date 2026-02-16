@@ -61,7 +61,7 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups";
 
 export interface ComplexityRange {
   label: string;
