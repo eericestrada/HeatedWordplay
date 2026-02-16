@@ -123,7 +123,7 @@ export default function App() {
     setScreen("play");
   };
 
-  const handleComplete = (
+  const handleComplete = async (
     totalGuesses: number,
     medal: Medal | null,
     usedClue: boolean,
@@ -138,6 +138,25 @@ export default function App() {
         ...prev,
         [selectedPuzzle.id]: status,
       }));
+
+      // Re-fetch puzzle data so definition/inspo are visible (now that attempt exists)
+      if (!selectedPuzzle.definition && typeof selectedPuzzle.id === "string") {
+        const { data } = await supabase
+          .from("puzzles_visible")
+          .select("*")
+          .eq("id", selectedPuzzle.id)
+          .single();
+        if (data) {
+          setSelectedPuzzle({
+            ...selectedPuzzle,
+            word: (data.word as string) || selectedPuzzle.word,
+            definition: (data.definition as string) || "",
+            clue: (data.clue as string) || null,
+            context: (data.inspo as string) || null,
+            creator: (data.creator_display_name as string) || (data.creator_username as string) || selectedPuzzle.creator,
+          });
+        }
+      }
     }
     setScreen("result");
   };

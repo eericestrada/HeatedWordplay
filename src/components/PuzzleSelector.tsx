@@ -89,19 +89,19 @@ export default function PuzzleSelector({
           return (
             <button
               key={p.id}
-              onClick={() => !completed && onSelect(p)}
+              onClick={() => (!completed || completed === "submitted") && onSelect(p)}
               className="flex items-center justify-between rounded-[10px] text-left"
               style={{
-                background: completed
+                background: completed && completed !== "submitted"
                   ? "rgba(255,255,255,0.01)"
                   : "rgba(255,255,255,0.03)",
-                border: completed
+                border: completed && completed !== "submitted"
                   ? "1px solid rgba(255,255,255,0.04)"
                   : "1px solid rgba(255,255,255,0.08)",
                 padding: "16px 20px",
-                cursor: completed ? "default" : "pointer",
+                cursor: completed && completed !== "submitted" ? "default" : "pointer",
                 transition: "all 0.2s ease",
-                opacity: completed ? 0.6 : 1,
+                opacity: completed && completed !== "submitted" ? 0.6 : 1,
               }}
             >
               <div>
@@ -115,11 +115,25 @@ export default function PuzzleSelector({
                   }}
                 >
                   {p.creator === "You" ? "Your" : `${p.creator}'s`} puzzle
-                  {completed && (
+                  {completed && completed !== "submitted" && (
                     <span style={{ fontSize: "16px" }}>
                       {getMedalEmoji(
                         completed === "failed" ? null : completed,
                       )}
+                    </span>
+                  )}
+                  {completed === "submitted" && (
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: "10px",
+                        color: "rgba(26,158,158,0.7)",
+                        background: "rgba(26,158,158,0.1)",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      Test it
                     </span>
                   )}
                 </div>
@@ -160,7 +174,7 @@ export default function PuzzleSelector({
                 >
                   {p.word.length} letters
                 </div>
-                {!completed && (
+                {(!completed || completed === "submitted") && (
                   <div
                     style={{
                       color: "rgba(255,255,255,0.2)",
