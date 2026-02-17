@@ -39,7 +39,6 @@ export default function App() {
   // Supabase data
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [puzzlesLoading, setPuzzlesLoading] = useState(true);
-  const [groupReady, setGroupReady] = useState(false);
   const [groups, setGroups] = useState<Array<{ id: string; name: string; invite_code: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
@@ -114,11 +113,11 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (user && groupReady) {
+    if (user) {
       fetchPuzzles();
       fetchGroups();
     }
-  }, [user, groupReady, fetchPuzzles, fetchGroups]);
+  }, [user, fetchPuzzles, fetchGroups]);
 
   const handleSelect = (p: Puzzle) => {
     setSelectedPuzzle(p);
@@ -293,13 +292,6 @@ export default function App() {
     return shell(<UsernameScreen />);
   }
 
-  // Needs at least one group
-  if (!groupReady) {
-    return shell(
-      <GroupScreen onReady={() => setGroupReady(true)} />,
-    );
-  }
-
   // Authenticated — game screens
   return shell(
     <>
@@ -438,7 +430,41 @@ export default function App() {
         />
       )}
       {screen === "groups" && (
-        <GroupScreen manage onReady={() => { fetchGroups(); setScreen("select"); }} />
+        <GroupScreen
+          manage
+          onReady={() => { fetchGroups(); fetchPuzzles(); setScreen("select"); }}
+          onSelectPuzzle={async (puzzleId) => {
+            // Find puzzle in already-loaded list, or fetch it
+            let puzzle = puzzles.find((p) => p.id === puzzleId);
+            if (!puzzle) {
+              const { data } = await supabase
+                .from("puzzles_visible")
+                .select("*")
+                .eq("id", puzzleId)
+                .single();
+              if (data) {
+                puzzle = {
+                  id: data.id as string,
+                  word: (data.word as string) || "?".repeat(data.word_length as number),
+                  creator: (data.creator_display_name as string) || (data.creator_username as string) || "Unknown",
+                  creator_id: data.creator_id as string,
+                  definition: (data.definition as string) || "",
+                  clue: (data.clue as string) || null,
+                  context: (data.inspo as string) || null,
+                  complexity: data.complexity as number,
+                  submittedAt: (data.created_at as string)?.split("T")[0] || "",
+                  wordLength: data.word_length as number,
+                  hasClue: data.has_clue as boolean,
+                  hasAttempted: data.has_attempted as boolean,
+                  isPublic: data.is_public as boolean,
+                };
+              }
+            }
+            if (puzzle) {
+              handleSelect(puzzle);
+            }
+          }}
+        />
       )}
       {screen === "people" && (
         <PeopleScreen onBack={handleBack} />

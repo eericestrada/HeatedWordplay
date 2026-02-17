@@ -29,10 +29,23 @@ interface GroupActivity {
   completed_at: string;
 }
 
+interface GroupPuzzle {
+  puzzle_id: string;
+  creator_username: string;
+  creator_display_name: string | null;
+  word_length: number;
+  complexity: number;
+  has_clue: boolean;
+  created_at: string;
+  has_attempted: boolean;
+}
+
 interface GroupScreenProps {
   onReady: () => void;
   /** When true, skip auto-proceed and show the group list for management */
   manage?: boolean;
+  /** Called when user selects a puzzle from the group puzzles tab */
+  onSelectPuzzle?: (puzzleId: string) => void;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -65,7 +78,7 @@ function timeAgo(dateStr: string): string {
   });
 }
 
-export default function GroupScreen({ onReady, manage = false }: GroupScreenProps) {
+export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }: GroupScreenProps) {
   const { profile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +88,9 @@ export default function GroupScreen({ onReady, manage = false }: GroupScreenProp
   const [membersLoading, setMembersLoading] = useState(false);
   const [activity, setActivity] = useState<GroupActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState<"activity" | "members">("activity");
+  const [groupPuzzles, setGroupPuzzles] = useState<GroupPuzzle[]>([]);
+  const [puzzlesLoading, setPuzzlesLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState<"activity" | "members" | "puzzles">("puzzles");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -137,14 +152,29 @@ export default function GroupScreen({ onReady, manage = false }: GroupScreenProp
     setActivityLoading(false);
   };
 
+  const fetchGroupPuzzles = async (groupId: string) => {
+    if (!profile) return;
+    setPuzzlesLoading(true);
+    const { data, error: err } = await supabase.rpc("get_group_puzzles", {
+      p_group_id: groupId,
+      p_user_id: profile.id,
+    });
+    if (err) {
+      console.error("Group puzzles error:", err);
+    }
+    setGroupPuzzles((data as GroupPuzzle[]) || []);
+    setPuzzlesLoading(false);
+  };
+
   const openGroupDetail = (group: Group) => {
     setSelectedGroup(group);
     setMode("detail");
-    setDetailTab("activity");
+    setDetailTab("puzzles");
     setShowDeleteConfirm(false);
     setShowLeaveConfirm(false);
     fetchMembers(group.id);
     fetchActivity(group.id);
+    fetchGroupPuzzles(group.id);
   };
 
   const copyInviteCode = async (inviteCode: string) => {
@@ -535,9 +565,9 @@ export default function GroupScreen({ onReady, manage = false }: GroupScreenProp
           </div>
         </div>
 
-        {/* Tab selector: Activity / Members */}
+        {/* Tab selector: Puzzles / Activity / Members */}
         <div className="flex gap-1 w-full rounded-lg" style={{ background: "rgba(255,255,255,0.03)", padding: "3px" }}>
-          {(["activity", "members"] as const).map((tab) => (
+          {(["puzzles", "activity", "members"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setDetailTab(tab)}
@@ -553,10 +583,153 @@ export default function GroupScreen({ onReady, manage = false }: GroupScreenProp
                 transition: "all 0.15s ease",
               }}
             >
-              {tab === "activity" ? "Activity" : `Members (${membersLoading ? "..." : members.length})`}
+              {tab === "puzzles"
+                ? `Puzzles (${puzzlesLoading ? "..." : groupPuzzles.length})`
+                : tab === "activity"
+                  ? "Activity"
+                  : `Members (${membersLoading ? "..." : members.length})`}
             </button>
           ))}
         </div>
+
+        {/* Puzzles tab */}
+        {detailTab === "puzzles" && (
+          <div className="w-full">
+            {puzzlesLoading ? (
+              <div
+                className="font-body text-center"
+                style={{ fontSize: "13px", color: "rgba(255,255,255,0.25)", padding: "16px 0" }}
+              >
+                Loading puzzles...
+              </div>
+            ) : groupPuzzles.length === 0 ? (
+              <div
+                className="font-body text-center rounded-lg"
+                style={{
+                  fontSize: "13px",
+                  color: "rgba(255,255,255,0.3)",
+                  background: "rgba(255,255,255,0.02)",
+                  padding: "24px 16px",
+                  border: "1px solid rgba(255,255,255,0.04)",
+                }}
+              >
+                No puzzles shared with this group yet. Create a puzzle and share it here!
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {groupPuzzles.map((p) => {
+                  const creatorName = p.creator_display_name || p.creator_username;
+                  const isOwn = profile?.username === p.creator_username;
+                  return (
+                    <button
+                      key={p.puzzle_id}
+                      onClick={() => {
+                        if (onSelectPuzzle) {
+                          onSelectPuzzle(p.puzzle_id);
+                        }
+                      }}
+                      disabled={!onSelectPuzzle}
+                      className="flex items-center justify-between rounded-lg text-left w-full"
+                      style={{
+                        background: p.has_attempted
+                          ? "rgba(255,255,255,0.02)"
+                          : "rgba(255,180,60,0.04)",
+                        padding: "12px 14px",
+                        border: p.has_attempted
+                          ? "1px solid rgba(255,255,255,0.04)"
+                          : "1px solid rgba(255,180,60,0.15)",
+                        cursor: onSelectPuzzle ? "pointer" : "default",
+                        transition: "all 0.15s ease",
+                        opacity: p.has_attempted ? 0.6 : 1,
+                      }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="font-body"
+                          style={{ fontSize: "14px", color: "#f5f0e8", lineHeight: 1.4 }}
+                        >
+                          <span style={{ color: "rgba(255,180,60,0.8)", fontWeight: 700 }}>
+                            {p.word_length} letters
+                          </span>
+                          {" by "}
+                          <strong style={{ color: "rgba(255,255,255,0.8)" }}>
+                            {isOwn ? "you" : creatorName}
+                          </strong>
+                        </div>
+                        <div className="flex items-center gap-2" style={{ marginTop: "2px" }}>
+                          <span
+                            className="font-mono"
+                            style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)" }}
+                          >
+                            {timeAgo(p.created_at)}
+                          </span>
+                          {p.has_clue && (
+                            <span
+                              className="font-body"
+                              style={{
+                                fontSize: "10px",
+                                color: "rgba(26,158,158,0.7)",
+                                background: "rgba(26,158,158,0.08)",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              has clue
+                            </span>
+                          )}
+                          {p.complexity >= 4 && (
+                            <span
+                              className="font-body"
+                              style={{
+                                fontSize: "10px",
+                                color: "rgba(255,100,100,0.7)",
+                                background: "rgba(255,100,100,0.08)",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              hard
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 ml-3">
+                        {p.has_attempted ? (
+                          <span
+                            className="font-body"
+                            style={{
+                              fontSize: "11px",
+                              color: "rgba(255,255,255,0.25)",
+                              background: "rgba(255,255,255,0.04)",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            played
+                          </span>
+                        ) : (
+                          <span
+                            className="font-body"
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              color: "rgba(255,180,60,0.8)",
+                              background: "rgba(255,180,60,0.1)",
+                              padding: "3px 8px",
+                              borderRadius: "6px",
+                            }}
+                          >
+                            play →
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Activity tab */}
         {detailTab === "activity" && (
