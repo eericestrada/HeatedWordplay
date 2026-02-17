@@ -20,6 +20,49 @@ function emptyGrid(length: number): GridCell[] {
   return Array.from({ length }, () => ({ letter: "", pinned: false }));
 }
 
+// Persist in-progress game state to localStorage
+const SAVE_KEY_PREFIX = "hw-game-";
+
+interface SavedGameState {
+  completedRows: CompletedRow[];
+  letterStates: LetterStates;
+  clueRevealed: boolean;
+  magnetsUsed: number;
+  savedAt: number;
+}
+
+function getSavedGame(puzzleId: string | number): SavedGameState | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY_PREFIX + puzzleId);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as SavedGameState;
+    // Expire saves after 7 days
+    if (Date.now() - saved.savedAt > 7 * 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(SAVE_KEY_PREFIX + puzzleId);
+      return null;
+    }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function saveGame(puzzleId: string | number, state: SavedGameState) {
+  try {
+    localStorage.setItem(SAVE_KEY_PREFIX + puzzleId, JSON.stringify(state));
+  } catch {
+    // Storage full or unavailable — silently ignore
+  }
+}
+
+function clearSavedGame(puzzleId: string | number) {
+  try {
+    localStorage.removeItem(SAVE_KEY_PREFIX + puzzleId);
+  } catch {
+    // Ignore
+  }
+}
+
 interface GameBoardProps {
   puzzle: Puzzle;
   onComplete: (
@@ -40,18 +83,29 @@ export default function GameBoard({
   const { user } = useAuth();
   const wordLength = puzzle.wordLength || puzzle.word.length;
 
-  const [completedRows, setCompletedRows] = useState<CompletedRow[]>([]);
+  // Load saved game state if available
+  const saved = getSavedGame(puzzle.id);
+
+  const [completedRows, setCompletedRows] = useState<CompletedRow[]>(
+    () => saved?.completedRows || [],
+  );
   const [grid, setGrid] = useState<GridCell[]>(() => emptyGrid(wordLength));
-  const [letterStates, setLetterStates] = useState<LetterStates>({});
+  const [letterStates, setLetterStates] = useState<LetterStates>(
+    () => saved?.letterStates || {},
+  );
   const [gameOver, setGameOver] = useState(false);
   const [shake, setShake] = useState(false);
   const [revealingRow, setRevealingRow] = useState(-1);
   const [revealedCount, setRevealedCount] = useState(0);
   const [message, setMessage] = useState("");
-  const [clueRevealed, setClueRevealed] = useState(false);
+  const [clueRevealed, setClueRevealed] = useState(
+    () => saved?.clueRevealed || false,
+  );
   const [showClueConfirm, setShowClueConfirm] = useState(false);
   const [showClueDialog, setShowClueDialog] = useState(false);
-  const [magnetsUsed, setMagnetsUsed] = useState(0);
+  const [magnetsUsed, setMagnetsUsed] = useState(
+    () => saved?.magnetsUsed || 0,
+  );
   const [magnetMode, setMagnetMode] = useState(false);
   const [showMagnetConfirm, setShowMagnetConfirm] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
@@ -61,6 +115,19 @@ export default function GameBoard({
   // Own puzzles and mock/local puzzles use client-side evaluation.
   const isOwnPuzzle = !!user && puzzle.creator_id === user.id;
   const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
+
+  // Persist game state to localStorage whenever key state changes
+  useEffect(() => {
+    // Don't save if game is over or no progress
+    if (gameOver || completedRows.length === 0) return;
+    saveGame(puzzle.id, {
+      completedRows,
+      letterStates,
+      clueRevealed,
+      magnetsUsed,
+      savedAt: Date.now(),
+    });
+  }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, gameOver]);
 
   const totalCount = completedRows.length;
   const filledCount = grid.filter((c) => c.letter).length;
@@ -230,6 +297,8 @@ export default function GameBoard({
 
       const revealDuration = wordLength * 350 + 200;
       if (solved || newTotal >= MAX_GUESSES) {
+        // Clear saved game state — puzzle is complete
+        clearSavedGame(puzzle.id);
         setTimeout(() => {
           setGameOver(true);
           onComplete(
@@ -243,7 +312,7 @@ export default function GameBoard({
       }
       setTimeout(() => setRevealingRow(-1), revealDuration);
     },
-    [wordLength, onComplete, clueRevealed, magnetsUsed],
+    [wordLength, onComplete, clueRevealed, magnetsUsed, puzzle.id],
   );
 
   // Submit guess (async for server evaluation)

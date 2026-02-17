@@ -20,6 +20,37 @@ export default function PuzzleSelector({
   onSubmitWord,
 }: PuzzleSelectorProps) {
   const [showComplexity, setShowComplexity] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(() => {
+    try {
+      return localStorage.getItem("hw-hide-completed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleHideCompleted = () => {
+    const next = !hideCompleted;
+    setHideCompleted(next);
+    try {
+      localStorage.setItem("hw-hide-completed", String(next));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  // Count completed puzzles (excluding own "submitted" puzzles)
+  const completedCount = puzzles.filter((p) => {
+    const s = completedPuzzles[p.id];
+    return s && s !== "submitted";
+  }).length;
+
+  // Filter puzzles based on toggle
+  const visiblePuzzles = hideCompleted
+    ? puzzles.filter((p) => {
+        const s = completedPuzzles[p.id];
+        return !s || s === "submitted";
+      })
+    : puzzles;
 
   return (
     <div className="flex flex-col items-center gap-6 max-w-[480px] mx-auto" style={{ padding: "32px 20px" }}>
@@ -36,54 +67,118 @@ export default function PuzzleSelector({
         Select a word to guess. Trust your instincts.
       </div>
 
-      {/* Complexity toggle */}
-      <button
-        onClick={() => setShowComplexity(!showComplexity)}
-        className="flex items-center gap-2.5"
-        style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
-      >
-        <div
-          className="relative rounded-[10px]"
-          style={{
-            width: "36px",
-            height: "20px",
-            background: showComplexity
-              ? "rgba(255,180,60,0.35)"
-              : "rgba(255,255,255,0.1)",
-            transition: "background 0.2s ease",
-          }}
+      {/* Filter toggles */}
+      <div className="flex items-center gap-5">
+        {/* Complexity toggle */}
+        <button
+          onClick={() => setShowComplexity(!showComplexity)}
+          className="flex items-center gap-2"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
         >
           <div
-            className="absolute rounded-full"
+            className="relative rounded-[10px]"
             style={{
-              width: "16px",
-              height: "16px",
+              width: "32px",
+              height: "18px",
               background: showComplexity
-                ? "rgba(255,180,60,0.9)"
-                : "rgba(255,255,255,0.35)",
-              top: "2px",
-              left: showComplexity ? "18px" : "2px",
-              transition: "all 0.2s ease",
+                ? "rgba(255,180,60,0.35)"
+                : "rgba(255,255,255,0.1)",
+              transition: "background 0.2s ease",
             }}
-          />
-        </div>
-        <span
-          className="font-body"
-          style={{
-            fontSize: "13px",
-            color: showComplexity
-              ? "rgba(255,180,60,0.7)"
-              : "rgba(255,255,255,0.35)",
-            transition: "color 0.2s ease",
-          }}
-        >
-          Show complexity
-        </span>
-      </button>
+          >
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: "14px",
+                height: "14px",
+                background: showComplexity
+                  ? "rgba(255,180,60,0.9)"
+                  : "rgba(255,255,255,0.35)",
+                top: "2px",
+                left: showComplexity ? "16px" : "2px",
+                transition: "all 0.2s ease",
+              }}
+            />
+          </div>
+          <span
+            className="font-body"
+            style={{
+              fontSize: "12px",
+              color: showComplexity
+                ? "rgba(255,180,60,0.7)"
+                : "rgba(255,255,255,0.35)",
+              transition: "color 0.2s ease",
+            }}
+          >
+            Complexity
+          </span>
+        </button>
+
+        {/* Hide completed toggle */}
+        {completedCount > 0 && (
+          <button
+            onClick={toggleHideCompleted}
+            className="flex items-center gap-2"
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+          >
+            <div
+              className="relative rounded-[10px]"
+              style={{
+                width: "32px",
+                height: "18px",
+                background: hideCompleted
+                  ? "rgba(26,158,158,0.35)"
+                  : "rgba(255,255,255,0.1)",
+                transition: "background 0.2s ease",
+              }}
+            >
+              <div
+                className="absolute rounded-full"
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  background: hideCompleted
+                    ? "rgba(26,158,158,0.9)"
+                    : "rgba(255,255,255,0.35)",
+                  top: "2px",
+                  left: hideCompleted ? "16px" : "2px",
+                  transition: "all 0.2s ease",
+                }}
+              />
+            </div>
+            <span
+              className="font-body"
+              style={{
+                fontSize: "12px",
+                color: hideCompleted
+                  ? "rgba(26,158,158,0.7)"
+                  : "rgba(255,255,255,0.35)",
+                transition: "color 0.2s ease",
+              }}
+            >
+              Hide done ({completedCount})
+            </span>
+          </button>
+        )}
+      </div>
 
       {/* Puzzle list */}
       <div className="flex flex-col gap-2.5 w-full">
-        {puzzles.map((p) => {
+        {visiblePuzzles.length === 0 && hideCompleted && (
+          <div
+            className="font-body text-center rounded-lg"
+            style={{
+              fontSize: "13px",
+              color: "rgba(255,255,255,0.3)",
+              background: "rgba(255,255,255,0.02)",
+              padding: "24px 16px",
+              border: "1px solid rgba(255,255,255,0.04)",
+            }}
+          >
+            All puzzles completed! Toggle "Hide done" to see them, or submit a new word.
+          </div>
+        )}
+        {visiblePuzzles.map((p) => {
           const completed = completedPuzzles[p.id];
           const range = getComplexityRange(p.complexity);
           return (
