@@ -14,7 +14,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storage: localStorage,
     storageKey: "heated-wordplay-auth",
+    flowType: "pkce",
   },
 });

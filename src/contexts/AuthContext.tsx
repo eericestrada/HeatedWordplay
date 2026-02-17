@@ -73,8 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let initialized = false;
+    let mounted = true;
 
     const handleSession = async (session: Session | null, event?: string) => {
+      if (!mounted) return;
       if (session?.user) {
         try {
           // Small delay on fresh sign-in for the DB trigger to create the profile
@@ -82,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await new Promise((r) => setTimeout(r, 500));
           }
           const profile = await fetchProfile(session.user.id);
+          if (!mounted) return;
           setState({
             user: session.user,
             profile,
@@ -91,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
         } catch (err) {
           console.error("Failed to fetch profile:", err);
+          if (!mounted) return;
           setState({
             user: session.user,
             profile: null,
@@ -118,6 +122,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initialized = true;
     });
 
+    // Also explicitly try to restore session on mount.
+    // This is important on mobile browsers where onAuthStateChange
+    // may not reliably fire INITIAL_SESSION after tab restore/backgrounding.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && mounted) {
+        handleSession(session, "INITIAL_SESSION");
+      }
+    });
+
+    // Handle visibility changes — when the tab comes back to foreground on mobile,
+    // re-check and refresh the session to prevent stale token issues.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) {
+            // Session exists, just make sure it's fresh
+            supabase.auth.refreshSession().catch(() => {
+              // Refresh failed — session may have expired
+              console.warn("Session refresh failed on tab foreground");
+            });
+          }
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // Safety timeout — if onAuthStateChange hasn't resolved in 5s, force loading off
     const timeout = setTimeout(() => {
       setState((prev) => {
@@ -130,8 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 5000);
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
       clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
