@@ -256,7 +256,7 @@ export default function App() {
                 marginTop: "4px",
               }}
             >
-              Community Word Puzzles
+              All the words she said, running through my head
             </div>
           </div>
         )}
