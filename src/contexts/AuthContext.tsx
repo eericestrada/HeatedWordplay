@@ -122,14 +122,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initialized = true;
     });
 
+    // Handle PKCE OAuth callback — exchange the ?code= parameter for a session.
+    // This is necessary because PKCE flow returns a code in the URL query string
+    // that must be explicitly exchanged for tokens.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error) {
+          console.error("PKCE code exchange failed:", error.message);
+        } else if (data.session) {
+          handleSession(data.session, "SIGNED_IN");
+        }
+        // Clean up the URL — remove the ?code= parameter
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+      });
+    }
+
     // Also explicitly try to restore session on mount.
     // This is important on mobile browsers where onAuthStateChange
     // may not reliably fire INITIAL_SESSION after tab restore/backgrounding.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && mounted) {
-        handleSession(session, "INITIAL_SESSION");
-      }
-    });
+    if (!code) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session && mounted) {
+          handleSession(session, "INITIAL_SESSION");
+        }
+      });
+    }
 
     // Handle visibility changes — when the tab comes back to foreground on mobile,
     // re-check and refresh the session to prevent stale token issues.
