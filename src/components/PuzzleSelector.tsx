@@ -5,11 +5,13 @@ import {
   getComplexityRange,
   formatDate,
 } from "../utils/scoring";
+import { useAuth } from "../contexts/AuthContext";
 
 interface PuzzleSelectorProps {
   puzzles: Puzzle[];
   completedPuzzles: Record<string | number, CompletionStatus>;
   onSelect: (puzzle: Puzzle) => void;
+  onReview?: (puzzle: Puzzle) => void;
   onSubmitWord: () => void;
 }
 
@@ -17,12 +19,21 @@ export default function PuzzleSelector({
   puzzles,
   completedPuzzles,
   onSelect,
+  onReview,
   onSubmitWord,
 }: PuzzleSelectorProps) {
+  const { user } = useAuth();
   const [showComplexity, setShowComplexity] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(() => {
     try {
       return localStorage.getItem("hw-hide-completed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [hideOwn, setHideOwn] = useState(() => {
+    try {
+      return localStorage.getItem("hw-hide-own") === "true";
     } catch {
       return false;
     }
@@ -38,22 +49,101 @@ export default function PuzzleSelector({
     }
   };
 
+  const toggleHideOwn = () => {
+    const next = !hideOwn;
+    setHideOwn(next);
+    try {
+      localStorage.setItem("hw-hide-own", String(next));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
   // Count completed puzzles (excluding own "submitted" puzzles)
   const completedCount = puzzles.filter((p) => {
     const s = completedPuzzles[p.id];
     return s && s !== "submitted";
   }).length;
 
-  // Filter puzzles based on toggle
-  const visiblePuzzles = hideCompleted
-    ? puzzles.filter((p) => {
-        const s = completedPuzzles[p.id];
-        return !s || s === "submitted";
-      })
-    : puzzles;
+  // Count own puzzles
+  const ownCount = puzzles.filter((p) => p.creator_id === user?.id).length;
+
+  // Filter puzzles based on toggles
+  const visiblePuzzles = puzzles.filter((p) => {
+    const s = completedPuzzles[p.id];
+    if (hideCompleted && s && s !== "submitted") return false;
+    if (hideOwn && p.creator_id === user?.id) return false;
+    return true;
+  });
+
+  // Helper: mini toggle component
+  const Toggle = ({
+    active,
+    onClick,
+    label,
+    activeColor = "rgba(26,158,158,",
+  }: {
+    active: boolean;
+    onClick: () => void;
+    label: string;
+    activeColor?: string;
+  }) => (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2"
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "4px 0",
+      }}
+    >
+      <div
+        className="relative rounded-[10px]"
+        style={{
+          width: "32px",
+          height: "18px",
+          background: active
+            ? `${activeColor}0.35)`
+            : "rgba(255,255,255,0.1)",
+          transition: "background 0.2s ease",
+        }}
+      >
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: "14px",
+            height: "14px",
+            background: active
+              ? `${activeColor}0.9)`
+              : "rgba(255,255,255,0.35)",
+            top: "2px",
+            left: active ? "16px" : "2px",
+            transition: "all 0.2s ease",
+          }}
+        />
+      </div>
+      <span
+        className="font-body"
+        style={{
+          fontSize: "12px",
+          color: active
+            ? `${activeColor}0.7)`
+            : "rgba(255,255,255,0.35)",
+          transition: "color 0.2s ease",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
 
   return (
-    <div className="flex flex-col items-center gap-6 max-w-[480px] mx-auto" style={{ padding: "32px 20px" }}>
+    <div
+      className="flex flex-col items-center gap-6 max-w-[480px] mx-auto"
+      style={{ padding: "32px 20px" }}
+    >
       <div
         className="font-display text-center"
         style={{ fontSize: "28px", fontWeight: 700, color: "#f5f0e8" }}
@@ -68,103 +158,32 @@ export default function PuzzleSelector({
       </div>
 
       {/* Filter toggles */}
-      <div className="flex items-center gap-5">
-        {/* Complexity toggle */}
-        <button
+      <div className="flex items-center gap-4 flex-wrap justify-center">
+        <Toggle
+          active={showComplexity}
           onClick={() => setShowComplexity(!showComplexity)}
-          className="flex items-center gap-2"
-          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
-        >
-          <div
-            className="relative rounded-[10px]"
-            style={{
-              width: "32px",
-              height: "18px",
-              background: showComplexity
-                ? "rgba(255,180,60,0.35)"
-                : "rgba(255,255,255,0.1)",
-              transition: "background 0.2s ease",
-            }}
-          >
-            <div
-              className="absolute rounded-full"
-              style={{
-                width: "14px",
-                height: "14px",
-                background: showComplexity
-                  ? "rgba(255,180,60,0.9)"
-                  : "rgba(255,255,255,0.35)",
-                top: "2px",
-                left: showComplexity ? "16px" : "2px",
-                transition: "all 0.2s ease",
-              }}
-            />
-          </div>
-          <span
-            className="font-body"
-            style={{
-              fontSize: "12px",
-              color: showComplexity
-                ? "rgba(255,180,60,0.7)"
-                : "rgba(255,255,255,0.35)",
-              transition: "color 0.2s ease",
-            }}
-          >
-            Complexity
-          </span>
-        </button>
-
-        {/* Hide completed toggle */}
+          label="Complexity"
+          activeColor="rgba(255,180,60,"
+        />
         {completedCount > 0 && (
-          <button
+          <Toggle
+            active={hideCompleted}
             onClick={toggleHideCompleted}
-            className="flex items-center gap-2"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
-          >
-            <div
-              className="relative rounded-[10px]"
-              style={{
-                width: "32px",
-                height: "18px",
-                background: hideCompleted
-                  ? "rgba(26,158,158,0.35)"
-                  : "rgba(255,255,255,0.1)",
-                transition: "background 0.2s ease",
-              }}
-            >
-              <div
-                className="absolute rounded-full"
-                style={{
-                  width: "14px",
-                  height: "14px",
-                  background: hideCompleted
-                    ? "rgba(26,158,158,0.9)"
-                    : "rgba(255,255,255,0.35)",
-                  top: "2px",
-                  left: hideCompleted ? "16px" : "2px",
-                  transition: "all 0.2s ease",
-                }}
-              />
-            </div>
-            <span
-              className="font-body"
-              style={{
-                fontSize: "12px",
-                color: hideCompleted
-                  ? "rgba(26,158,158,0.7)"
-                  : "rgba(255,255,255,0.35)",
-                transition: "color 0.2s ease",
-              }}
-            >
-              Hide done ({completedCount})
-            </span>
-          </button>
+            label={`Hide done (${completedCount})`}
+          />
+        )}
+        {ownCount > 0 && (
+          <Toggle
+            active={hideOwn}
+            onClick={toggleHideOwn}
+            label={`Hide mine (${ownCount})`}
+          />
         )}
       </div>
 
       {/* Puzzle list */}
       <div className="flex flex-col gap-2.5 w-full">
-        {visiblePuzzles.length === 0 && hideCompleted && (
+        {visiblePuzzles.length === 0 && (
           <div
             className="font-body text-center rounded-lg"
             style={{
@@ -175,28 +194,41 @@ export default function PuzzleSelector({
               border: "1px solid rgba(255,255,255,0.04)",
             }}
           >
-            All puzzles completed! Toggle "Hide done" to see them, or submit a new word.
+            {hideCompleted || hideOwn
+              ? "All puzzles hidden by filters. Adjust the toggles above, or submit a new word."
+              : "No puzzles available yet. Submit a word to create your first puzzle!"}
           </div>
         )}
         {visiblePuzzles.map((p) => {
           const completed = completedPuzzles[p.id];
           const range = getComplexityRange(p.complexity);
+          const isFinished = completed && completed !== "submitted";
+          const isOwn = completed === "submitted";
+
+          const handleClick = () => {
+            if (isFinished && onReview) {
+              onReview(p);
+            } else if (!isFinished || isOwn) {
+              onSelect(p);
+            }
+          };
+
           return (
             <button
               key={p.id}
-              onClick={() => (!completed || completed === "submitted") && onSelect(p)}
+              onClick={handleClick}
               className="flex items-center justify-between rounded-[10px] text-left"
               style={{
-                background: completed && completed !== "submitted"
+                background: isFinished
                   ? "rgba(255,255,255,0.01)"
                   : "rgba(255,255,255,0.03)",
-                border: completed && completed !== "submitted"
+                border: isFinished
                   ? "1px solid rgba(255,255,255,0.04)"
                   : "1px solid rgba(255,255,255,0.08)",
                 padding: "16px 20px",
-                cursor: completed && completed !== "submitted" ? "default" : "pointer",
+                cursor: "pointer",
                 transition: "all 0.2s ease",
-                opacity: completed && completed !== "submitted" ? 0.6 : 1,
+                opacity: isFinished ? 0.6 : 1,
               }}
             >
               <div>
@@ -210,14 +242,14 @@ export default function PuzzleSelector({
                   }}
                 >
                   {p.creator === "You" ? "Your" : `${p.creator}'s`} puzzle
-                  {completed && completed !== "submitted" && (
+                  {isFinished && (
                     <span style={{ fontSize: "16px" }}>
                       {getMedalEmoji(
                         completed === "failed" ? null : completed,
                       )}
                     </span>
                   )}
-                  {completed === "submitted" && (
+                  {isOwn && (
                     <span
                       className="font-mono"
                       style={{
@@ -269,7 +301,17 @@ export default function PuzzleSelector({
                 >
                   {p.word.length} letters
                 </div>
-                {(!completed || completed === "submitted") && (
+                {isFinished ? (
+                  <div
+                    className="font-body"
+                    style={{
+                      color: "rgba(255,255,255,0.2)",
+                      fontSize: "10px",
+                    }}
+                  >
+                    review
+                  </div>
+                ) : (
                   <div
                     style={{
                       color: "rgba(255,255,255,0.2)",

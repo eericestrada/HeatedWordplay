@@ -62,7 +62,7 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review";
 
 export interface ConnectedUser {
   user_id: string;

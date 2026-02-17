@@ -122,6 +122,46 @@ export async function updatePuzzlePublic(
 }
 
 /**
+ * Save guess history (rows) to an existing attempt record.
+ * Called after game completion so users can revisit their guesses later.
+ */
+export async function saveAttemptGuesses(
+  puzzleId: string,
+  guesses: Array<{ result: Array<{ letter: string; status: string | null }> }>,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("attempts")
+    .update({ guesses })
+    .eq("puzzle_id", puzzleId)
+    .eq("user_id", user.id);
+}
+
+/**
+ * Fetch a completed attempt's data including guess history.
+ */
+export async function getAttempt(puzzleId: string) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("attempts")
+    .select("*")
+    .eq("puzzle_id", puzzleId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error || !data) return null;
+  return data;
+}
+
+/**
  * Evaluate a guess via Edge Function.
  * The answer word never leaves the server.
  */

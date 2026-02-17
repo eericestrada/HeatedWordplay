@@ -9,7 +9,9 @@ import PuzzleSelector from "./components/PuzzleSelector";
 import SubmitWord from "./components/SubmitWord";
 import ShareScreen from "./components/ShareScreen";
 import PeopleScreen from "./components/PeopleScreen";
+import ReviewScreen from "./components/ReviewScreen";
 import ActivityFeed from "./components/ActivityFeed";
+import { saveAttemptGuesses } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import type {
   Puzzle,
@@ -140,6 +142,11 @@ export default function App() {
         ...prev,
         [selectedPuzzle.id]: status,
       }));
+
+      // Save guess history to the attempt record so users can revisit later
+      if (typeof selectedPuzzle.id === "string") {
+        saveAttemptGuesses(selectedPuzzle.id, rows).catch(console.error);
+      }
 
       // Re-fetch puzzle data so definition/inspo are visible (now that attempt exists)
       if (!selectedPuzzle.definition && typeof selectedPuzzle.id === "string") {
@@ -404,6 +411,10 @@ export default function App() {
                 puzzles={puzzles}
                 completedPuzzles={completedPuzzles}
                 onSelect={handleSelect}
+                onReview={(p) => {
+                  setSelectedPuzzle(p);
+                  setScreen("review");
+                }}
                 onSubmitWord={() => setScreen("submit")}
               />
               <ActivityFeed groupId={selectedGroupId} />
@@ -465,6 +476,9 @@ export default function App() {
             }
           }}
         />
+      )}
+      {screen === "review" && selectedPuzzle && (
+        <ReviewScreen puzzle={selectedPuzzle} onBack={handleBack} />
       )}
       {screen === "people" && (
         <PeopleScreen onBack={handleBack} />
