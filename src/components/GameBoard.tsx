@@ -580,7 +580,7 @@ export default function GameBoard({
   }
 
   return (
-    <div className="flex flex-col h-full max-w-[520px] mx-auto px-5 justify-end">
+    <div className="flex flex-col h-full max-w-[520px] mx-auto px-3 justify-end">
       {/* Header */}
       <div className="flex items-center justify-between w-full py-2">
         <button
@@ -662,7 +662,7 @@ export default function GameBoard({
       </div>
 
       {/* Flexible spacer between grid and controls */}
-      <div className="flex-1 min-h-1 max-h-12" />
+      <div className="flex-1 min-h-1 max-h-4" />
 
       {/* Clue dialog (dismissable) */}
       {showClueDialog && (
@@ -826,7 +826,7 @@ export default function GameBoard({
       )}
 
       {/* Input Panel */}
-      <div className="w-full flex justify-center py-2">
+      <div className="w-full flex justify-center py-1">
         <InputPanel
           letterStates={letterStates}
           onKey={handleKey}

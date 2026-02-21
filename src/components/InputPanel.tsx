@@ -120,8 +120,8 @@ export default function InputPanel({
         onClick={() => handleLetterClick(ch)}
         className="font-mono flex items-center justify-center rounded-md"
         style={{
-          width: isVowel ? "38px" : "36px",
-          height: isVowel ? "44px" : "40px",
+          width: isVowel ? "40px" : "38px",
+          height: isVowel ? "48px" : "44px",
           fontSize: isVowel ? "16px" : "15px",
           fontWeight: isVowel ? 700 : 600,
           backgroundColor: c.bg,
@@ -142,7 +142,7 @@ export default function InputPanel({
   };
 
   return (
-    <div className="flex flex-col gap-2 items-center w-full max-w-[520px]">
+    <div className="flex flex-col gap-1.5 items-center w-full">
       {/* Unified toolbar */}
       <div
         className="flex items-center justify-center gap-1 w-full rounded-lg"
@@ -268,17 +268,20 @@ export default function InputPanel({
       </div>
 
       {view === "qwerty" ? (
-        <div className="flex flex-col gap-1.5 items-center w-full">
+        <div className="flex flex-col gap-[5px] items-center w-full">
           {QWERTY_ROWS.map((row, ri) => (
-            <div key={ri} className="flex gap-1 justify-center">
+            <div key={ri} className="flex gap-[4px] w-full" style={{
+              paddingLeft: ri === 1 ? "5%" : ri === 2 ? "0" : "0",
+              paddingRight: ri === 1 ? "5%" : ri === 2 ? "0" : "0",
+            }}>
               {ri === 2 && (
                 <button
                   onClick={() => onKey("Enter")}
                   className="font-mono flex items-center justify-center rounded-md"
                   style={{
-                    width: "clamp(52px, 14vw, 72px)",
-                    height: "clamp(40px, 10vw, 54px)",
-                    fontSize: "clamp(11px, 2.5vw, 13px)",
+                    flex: "1.5",
+                    height: "clamp(46px, 11.5vw, 58px)",
+                    fontSize: "clamp(11px, 2.8vw, 13px)",
                     fontWeight: 600,
                     backgroundColor: "rgba(45,138,78,0.15)",
                     color: "rgba(45,138,78,0.9)",
@@ -300,9 +303,10 @@ export default function InputPanel({
                     onClick={() => handleLetterClick(key)}
                     className="font-mono flex items-center justify-center rounded-md"
                     style={{
-                      width: "clamp(28px, 8vw, 42px)",
-                      height: "clamp(40px, 10vw, 54px)",
-                      fontSize: "clamp(14px, 3.5vw, 17px)",
+                      flex: "1",
+                      minWidth: 0,
+                      height: "clamp(46px, 11.5vw, 58px)",
+                      fontSize: "clamp(15px, 3.8vw, 18px)",
                       fontWeight: 600,
                       backgroundColor: c.bg,
                       color: c.color,
@@ -326,9 +330,9 @@ export default function InputPanel({
                   onClick={() => onKey("Backspace")}
                   className="font-mono flex items-center justify-center rounded-md"
                   style={{
-                    width: "clamp(52px, 14vw, 72px)",
-                    height: "clamp(40px, 10vw, 54px)",
-                    fontSize: "clamp(11px, 2.5vw, 13px)",
+                    flex: "1.5",
+                    height: "clamp(46px, 11.5vw, 58px)",
+                    fontSize: "clamp(11px, 2.8vw, 13px)",
                     fontWeight: 600,
                     backgroundColor: "rgba(255,255,255,0.1)",
                     color: "rgba(255,255,255,0.5)",
@@ -349,7 +353,7 @@ export default function InputPanel({
           {viableConsonants.length > 0 && (
             <div
               className="flex flex-wrap gap-[5px] justify-center"
-              style={{ maxWidth: "360px" }}
+              style={{ maxWidth: "400px" }}
             >
               {consonantOrder
                 .filter((ch) => viable.includes(ch))
@@ -363,7 +367,7 @@ export default function InputPanel({
               onClick={() => onKey("Enter")}
               className="font-mono flex items-center justify-center rounded-md"
               style={{
-                height: "44px",
+                height: "48px",
                 padding: "0 14px",
                 fontSize: "12px",
                 fontWeight: 600,
@@ -383,7 +387,7 @@ export default function InputPanel({
               onClick={() => onKey("Backspace")}
               className="font-mono flex items-center justify-center rounded-md"
               style={{
-                height: "44px",
+                height: "48px",
                 padding: "0 14px",
                 fontSize: "12px",
                 fontWeight: 600,
