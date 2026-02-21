@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { addPuzzleShares, updatePuzzlePublic } from "../lib/api";
+import { buildPuzzleUrl, sharePuzzleLink, copyToClipboard } from "../utils/sharing";
 import type { Puzzle, ConnectedUser } from "../types";
 
 interface ShareScreenProps {
@@ -28,6 +29,9 @@ export default function ShareScreen({
   const [searchResults, setSearchResults] = useState<Array<{ id: string; username: string; display_name: string | null }>>([]);
   const [searching, setSearching] = useState(false);
   const [showUserSearch, setShowUserSearch] = useState(false);
+
+  // Link sharing state
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Action state
   const [saving, setSaving] = useState(false);
@@ -180,6 +184,93 @@ export default function ShareScreen({
         style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}
       >
         Now share it so others can play. The definition and inspo stay hidden until they solve it.
+      </div>
+
+      {/* === Share Link (external) === */}
+      <div className="w-full">
+        <div
+          className="font-mono uppercase tracking-[0.12em]"
+          style={{
+            fontSize: "10px",
+            fontWeight: 600,
+            color: "rgba(255,180,60,0.5)",
+            marginBottom: "8px",
+          }}
+        >
+          Share outside the app
+        </div>
+        <div
+          className="flex items-center gap-2 rounded-lg w-full"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            padding: "10px 12px",
+          }}
+        >
+          <div
+            className="font-mono flex-1 truncate"
+            style={{
+              fontSize: "12px",
+              color: "rgba(255,255,255,0.4)",
+            }}
+          >
+            {buildPuzzleUrl(puzzleId)}
+          </div>
+          <button
+            onClick={async () => {
+              const ok = await copyToClipboard(buildPuzzleUrl(puzzleId));
+              if (ok) {
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }
+            }}
+            className="font-body shrink-0 rounded-md"
+            style={{
+              fontSize: "12px",
+              fontWeight: 600,
+              padding: "6px 12px",
+              border: linkCopied
+                ? "1px solid rgba(45,138,78,0.4)"
+                : "1px solid rgba(255,180,60,0.25)",
+              background: linkCopied
+                ? "rgba(45,138,78,0.12)"
+                : "rgba(255,180,60,0.08)",
+              color: linkCopied
+                ? "rgba(45,138,78,0.95)"
+                : "rgba(255,180,60,0.9)",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {linkCopied ? "Copied!" : "Copy link"}
+          </button>
+        </div>
+        {"share" in navigator && (
+          <button
+            onClick={async () => {
+              await sharePuzzleLink(
+                puzzleId,
+                profile?.display_name || profile?.username || "Someone",
+                puzzle.word.length,
+              );
+            }}
+            className="font-body w-full rounded-lg flex items-center justify-center gap-2"
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              padding: "12px 20px",
+              marginTop: "8px",
+              border: "1px solid rgba(100,160,255,0.3)",
+              background: "rgba(100,160,255,0.08)",
+              color: "rgba(100,160,255,0.9)",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span style={{ fontSize: "16px" }}>&#x1F4E4;</span>
+            Share via text, social media...
+          </button>
+        )}
       </div>
 
       {/* === Share to Groups === */}

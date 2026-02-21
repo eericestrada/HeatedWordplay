@@ -6,6 +6,7 @@ import {
   getMedalLabel,
   formatDate,
 } from "../utils/scoring";
+import { shareResults, buildPuzzleUrl } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
 
 interface VictoryScreenProps {
@@ -73,20 +74,11 @@ export default function VictoryScreen({
       : `❌ ${totalGuesses}/6${aids ? ` · ${aids}` : ""}`,
   ].join("\n");
 
-  const handleCopy = () => {
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = shareText;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
+  const handleShare = async () => {
+    const result = await shareResults(shareText, puzzle.id as string);
+    if (result === "copied" || result === "shared") {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
     }
   };
 
@@ -337,6 +329,16 @@ export default function VictoryScreen({
         >
           {shareText}
         </div>
+        <div
+          className="font-mono"
+          style={{
+            fontSize: "11px",
+            color: "rgba(100,160,255,0.6)",
+            marginTop: "8px",
+          }}
+        >
+          {buildPuzzleUrl(puzzle.id as string)}
+        </div>
       </div>
 
       {/* Action buttons */}
@@ -359,7 +361,7 @@ export default function VictoryScreen({
           Back to puzzles
         </button>
         <button
-          onClick={handleCopy}
+          onClick={handleShare}
           className="font-body flex-1"
           style={{
             fontSize: "14px",
@@ -380,7 +382,7 @@ export default function VictoryScreen({
             letterSpacing: "0.04em",
           }}
         >
-          {copied ? "Copied!" : "Share results"}
+          {copied ? "Shared!" : "Share results"}
         </button>
       </div>
     </div>

@@ -47,6 +47,12 @@ export default function App() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
 
+  // Deep link: extract puzzle ID from URL path (e.g. /play/{uuid})
+  const [deepLinkPuzzleId, setDeepLinkPuzzleId] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/play\/([a-f0-9-]{36})$/i);
+    return match ? match[1] : null;
+  });
+
   // Streaks data — indexed by partner_id for fast lookup
   const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
 
@@ -145,6 +151,62 @@ export default function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  // Deep link: auto-navigate to a puzzle when opened via /play/{id}
+  useEffect(() => {
+    if (!deepLinkPuzzleId || !user || puzzlesLoading) return;
+
+    const navigateToDeepLink = async () => {
+      // Clean the URL so refreshing doesn't re-trigger
+      window.history.replaceState({}, "", "/");
+
+      // First check if puzzle is in the already-loaded list
+      let puzzle = puzzles.find((p) => p.id === deepLinkPuzzleId);
+
+      // If not found, fetch directly (puzzle might be public or shared via link)
+      if (!puzzle) {
+        const { data } = await supabase
+          .from("puzzles_visible")
+          .select("*")
+          .eq("id", deepLinkPuzzleId)
+          .single();
+        if (data) {
+          puzzle = {
+            id: data.id as string,
+            word: (data.word as string) || "?".repeat(data.word_length as number),
+            creator: (data.creator_display_name as string) || (data.creator_username as string) || "Unknown",
+            creator_id: data.creator_id as string,
+            definition: (data.definition as string) || "",
+            clue: (data.clue as string) || null,
+            context: (data.inspo as string) || null,
+            complexity: data.complexity as number,
+            submittedAt: (data.created_at as string)?.split("T")[0] || "",
+            wordLength: data.word_length as number,
+            hasClue: data.has_clue as boolean,
+            hasAttempted: data.has_attempted as boolean,
+            isPublic: data.is_public as boolean,
+          };
+        }
+      }
+
+      if (puzzle) {
+        // Check if already completed — go to review instead
+        const status = completedPuzzles[puzzle.id];
+        if (status && status !== "submitted") {
+          setSelectedPuzzle(puzzle);
+          setScreen("review");
+          window.history.pushState({ screen: "review" }, "");
+        } else {
+          handleSelect(puzzle);
+        }
+      }
+      // Clear so it doesn't re-trigger
+      setDeepLinkPuzzleId(null);
+    };
+
+    navigateToDeepLink();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkPuzzleId, user, puzzlesLoading, puzzles, completedPuzzles]);
 
   const handleSelect = (p: Puzzle) => {
     setSelectedPuzzle(p);

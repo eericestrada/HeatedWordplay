@@ -7,6 +7,7 @@ import {
   getMultiplier,
   formatDate,
 } from "../utils/scoring";
+import { shareResults } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
 import type { Puzzle, CompletedRow, ResultCell, Medal } from "../types";
 
@@ -79,20 +80,11 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
       : `\u274c ${totalGuesses}/6${aids ? ` \u00b7 ${aids}` : ""}`,
   ].join("\n");
 
-  const handleCopy = () => {
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = shareText;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
+  const handleShare = async () => {
+    const result = await shareResults(shareText, puzzle.id as string);
+    if (result === "copied" || result === "shared") {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
     }
   };
 
@@ -300,7 +292,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
         </button>
         {rows.length > 0 && (
           <button
-            onClick={handleCopy}
+            onClick={handleShare}
             className="font-body flex-1"
             style={{
               fontSize: "14px",
@@ -320,7 +312,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
               transition: "all 0.15s ease",
             }}
           >
-            {copied ? "Copied!" : "Share results"}
+            {copied ? "Shared!" : "Share results"}
           </button>
         )}
       </div>
