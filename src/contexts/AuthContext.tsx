@@ -137,10 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState === "visible") {
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session) {
-            // Session exists, just make sure it's fresh
-            supabase.auth.refreshSession().catch(() => {
-              // Refresh failed — session may have expired
-              console.warn("Session refresh failed on tab foreground");
+            supabase.auth.refreshSession().then(({ error }) => {
+              if (error) {
+                console.warn("Session refresh failed on tab foreground:", error.message);
+                // Refresh token expired or revoked — sign out cleanly
+                // so the user re-authenticates instead of hitting 401s
+                supabase.auth.signOut();
+              }
             });
           }
         });

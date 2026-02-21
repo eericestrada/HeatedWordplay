@@ -216,6 +216,8 @@ export default function GameBoard({
         const msg = err instanceof Error ? err.message : "Magnet failed";
         if (msg === "Already placed") {
           showMsg("Already placed!");
+        } else if (msg.includes("Session expired")) {
+          setEvalError("Session expired — signing in...");
         } else {
           showMsg("Magnet error — try again");
         }
@@ -326,19 +328,20 @@ export default function GameBoard({
         return;
       }
 
-      // Dictionary validation for full-word guesses
+      // Dictionary validation for all guesses (short and full-length)
       const isFull = filledCells.length === wordLength;
-      if (isFull) {
-        const guessWord = currentGrid.map((c) => c.letter).join("");
-        setEvaluating(true);
-        const dictResult = await lookupWord(guessWord);
-        setEvaluating(false);
-        if (!dictResult) {
-          setShake(true);
-          showMsg("Not a valid word");
-          setTimeout(() => setShake(false), 400);
-          return;
-        }
+      const guessWord = currentGrid
+        .filter((c) => c.letter)
+        .map((c) => c.letter)
+        .join("");
+      setEvaluating(true);
+      const dictResult = await lookupWord(guessWord);
+      setEvaluating(false);
+      if (!dictResult) {
+        setShake(true);
+        showMsg("Not a valid word");
+        setTimeout(() => setShake(false), 400);
+        return;
       }
 
       const newTotal = totalCount + 1;
@@ -380,6 +383,8 @@ export default function GameBoard({
           if (msg === "Already completed this puzzle") {
             setEvalError("You've already completed this puzzle.");
             showMsg("Already completed!");
+          } else if (msg.includes("Session expired")) {
+            setEvalError("Session expired — signing in...");
           } else {
             setEvalError(msg);
             showMsg("Error — try again");

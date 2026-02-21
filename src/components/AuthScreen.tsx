@@ -65,7 +65,7 @@ export default function AuthScreen() {
   if (signupSuccess) {
     return (
       <div
-        className="flex flex-col items-center gap-5 max-w-[400px] mx-auto"
+        className="flex flex-col items-center gap-5 w-full max-w-[400px] mx-auto min-h-full justify-center"
         style={{ padding: "40px 20px", animation: "fadeUp 0.3s ease" }}
       >
         <div style={{ fontSize: "48px" }}>✉️</div>
@@ -111,7 +111,7 @@ export default function AuthScreen() {
 
   return (
     <div
-      className="flex flex-col items-center gap-5 max-w-[400px] mx-auto"
+      className="flex flex-col items-center gap-5 w-full max-w-[400px] mx-auto min-h-full justify-center"
       style={{ padding: "40px 20px", animation: "fadeUp 0.3s ease" }}
     >
       <div

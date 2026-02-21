@@ -2,6 +2,45 @@ import { supabase } from "./supabase";
 import type { DictionaryEntry } from "../types";
 
 /**
+ * Invoke a Supabase Edge Function with automatic session refresh on 401.
+ * If the call fails with a 401 (expired token), refreshes the session and
+ * retries once. If refresh also fails, signs out and throws a clear error.
+ */
+async function invokeWithRetry<T = unknown>(
+  functionName: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const attempt = async () => {
+    const { data, error, response } = await supabase.functions.invoke(
+      functionName,
+      { body },
+    );
+    if (error) {
+      if (response?.status === 401) {
+        throw { isAuthError: true };
+      }
+      throw new Error(error.message || `Failed to call ${functionName}`);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data as T;
+  };
+
+  try {
+    return await attempt();
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "isAuthError" in err) {
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        await supabase.auth.signOut();
+        throw new Error("Session expired — please sign in again");
+      }
+      return await attempt();
+    }
+    throw err;
+  }
+}
+
+/**
  * Look up a word using the free dictionary API.
  * Returns definitions or null if word not found.
  */
@@ -51,13 +90,8 @@ export async function submitPuzzle(params: {
     allow_reshare: boolean;
   }>;
 }) {
-  const { data, error } = await supabase.functions.invoke("submit-word", {
-    body: params,
-  });
-
-  if (error) throw new Error(error.message || "Failed to submit puzzle");
-  if (data?.error) throw new Error(data.error);
-  return data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return invokeWithRetry<any>("submit-word", params as unknown as Record<string, unknown>);
 }
 
 /**
@@ -69,13 +103,10 @@ export async function useMagnetServer(params: {
   letter: string;
   current_grid: Array<{ letter: string; position: number; pinned: boolean }>;
 }) {
-  const { data, error } = await supabase.functions.invoke("use-magnet", {
-    body: params,
-  });
-
-  if (error) throw new Error(error.message || "Failed to use magnet");
-  if (data?.error) throw new Error(data.error);
-  return data as { position: number; letter: string };
+  return invokeWithRetry<{ position: number; letter: string }>(
+    "use-magnet",
+    params as unknown as Record<string, unknown>,
+  );
 }
 
 /**
@@ -172,17 +203,12 @@ export async function evaluateGuess(params: {
   magnets_used: number;
   guess_number: number;
 }) {
-  const { data, error } = await supabase.functions.invoke("evaluate-guess", {
-    body: {
-      puzzle_id: params.puzzle_id,
-      guess_cells: params.guess_cells,
-      used_clue: params.used_clue,
-      magnets_used: params.magnets_used,
-      guess_number: params.guess_number,
-    },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return invokeWithRetry<any>("evaluate-guess", {
+    puzzle_id: params.puzzle_id,
+    guess_cells: params.guess_cells,
+    used_clue: params.used_clue,
+    magnets_used: params.magnets_used,
+    guess_number: params.guess_number,
   });
-
-  if (error) throw new Error(error.message || "Failed to evaluate guess");
-  if (data?.error) throw new Error(data.error);
-  return data;
 }
