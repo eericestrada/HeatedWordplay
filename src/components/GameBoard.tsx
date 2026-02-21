@@ -138,7 +138,9 @@ export default function GameBoard({
       const el = gridRef.current;
       if (!el) return;
       const availW = el.clientWidth;
-      const availH = el.clientHeight;
+      // Subtract the 24px message bar from available height
+      const availH = el.clientHeight - 24;
+      if (availH <= 0) return;
       const gap = 6;
       // Max tile width: fill the row (wordLength tiles + gaps)
       const maxByWidth = Math.floor((availW - gap * (wordLength - 1)) / wordLength);
@@ -643,7 +645,7 @@ export default function GameBoard({
       </div>
 
       {/* Grid area — flex-1 to fill available space, grid centered within */}
-      <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+      <div ref={gridRef} className="flex-1 flex flex-col items-center justify-center min-h-0">
         {/* Message */}
         <div className="h-[24px] flex items-center justify-center shrink-0">
           {evaluating ? (
@@ -689,8 +691,8 @@ export default function GameBoard({
           ) : null}
         </div>
 
-        {/* Grid rows — ref used for dynamic tile sizing measurement */}
-        <div ref={gridRef} className="flex-1 flex flex-col items-center justify-center min-h-0" style={{ gap: `${tileGap}px` }}>
+        {/* Grid rows */}
+        <div className="flex flex-col items-center" style={{ gap: `${tileGap}px` }}>
           {displayRows}
         </div>
       </div>
