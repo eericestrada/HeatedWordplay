@@ -121,10 +121,22 @@ export default function App() {
     }
   }, [user, fetchPuzzles, fetchGroups]);
 
+  // Handle hardware/browser back button — navigate to select screen
+  useEffect(() => {
+    const onPopState = () => {
+      setScreen("select");
+      setSelectedPuzzle(null);
+      setResultData(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handleSelect = (p: Puzzle) => {
     setSelectedPuzzle(p);
     setResultData(null);
     setScreen("play");
+    window.history.pushState({ screen: "play" }, "");
   };
 
   const handleComplete = async (
@@ -168,6 +180,7 @@ export default function App() {
       }
     }
     setScreen("result");
+    window.history.pushState({ screen: "result" }, "");
   };
 
   const handleBack = () => {
@@ -199,6 +212,7 @@ export default function App() {
       [newPuzzle.id]: submitted,
     }));
     setScreen("submitted");
+    window.history.pushState({ screen: "submitted" }, "");
     setSelectedPuzzle(newPuzzle);
     setSubmittedPuzzleId(data.puzzleId);
     // Refresh from server after a moment
@@ -351,7 +365,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setScreen("people")}
+              onClick={() => { setScreen("people"); window.history.pushState({ screen: "people" }, ""); }}
               className="font-body"
               style={{
                 fontSize: "11px",
@@ -364,7 +378,7 @@ export default function App() {
               👤 People
             </button>
             <button
-              onClick={() => setScreen("groups")}
+              onClick={() => { setScreen("groups"); window.history.pushState({ screen: "groups" }, ""); }}
               className="font-body"
               style={{
                 fontSize: "11px",
@@ -416,8 +430,9 @@ export default function App() {
                 onReview={(p) => {
                   setSelectedPuzzle(p);
                   setScreen("review");
+                  window.history.pushState({ screen: "review" }, "");
                 }}
-                onSubmitWord={() => setScreen("submit")}
+                onSubmitWord={() => { setScreen("submit"); window.history.pushState({ screen: "submit" }, ""); }}
               />
               <ActivityFeed groupId={selectedGroupId} />
             </>
