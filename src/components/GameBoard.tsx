@@ -647,7 +647,7 @@ export default function GameBoard({
       </div>
 
       {/* Grid area — flex-1 to fill available space, grid centered within */}
-      <div ref={gridRef} className="flex-1 flex flex-col items-center justify-center min-h-0">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-0">
         {/* Message */}
         <div className="h-[24px] flex items-center justify-center shrink-0">
           {evaluating ? (
@@ -693,8 +693,8 @@ export default function GameBoard({
           ) : null}
         </div>
 
-        {/* Grid rows */}
-        <div className="flex flex-col items-center" style={{ gap: `${tileGap}px` }}>
+        {/* Grid rows — ref used for dynamic tile sizing measurement */}
+        <div ref={gridRef} className="flex-1 flex flex-col items-center justify-center min-h-0" style={{ gap: `${tileGap}px` }}>
           {displayRows}
         </div>
       </div>
@@ -861,7 +861,7 @@ export default function GameBoard({
       )}
 
       {/* Input Panel */}
-      <div className="w-full flex justify-center py-1">
+      <div className="w-full flex justify-center shrink-0 py-0.5">
         <InputPanel
           letterStates={letterStates}
           onKey={handleKey}
@@ -886,22 +886,21 @@ export default function GameBoard({
         />
       </div>
 
-      {/* Pin hint */}
-      {!gameOver && filledCount > 0 && !hasPins && totalCount > 0 && (
-        <div
-          className="font-body text-center"
-          style={{
-            fontSize: "11px",
-            color: "rgba(255,255,255,0.15)",
-            paddingBottom: "4px",
-          }}
-        >
-          Tap a letter to pin it in place
-        </div>
-      )}
-
-      {/* Bottom safe area */}
-      <div className="h-1 shrink-0" />
+      {/* Pin hint — always reserve the space so keyboard doesn't shift */}
+      <div
+        className="font-body text-center shrink-0"
+        style={{
+          fontSize: "11px",
+          color: "rgba(255,255,255,0.15)",
+          height: "20px",
+          visibility:
+            !gameOver && filledCount > 0 && !hasPins && totalCount > 0
+              ? "visible"
+              : "hidden",
+        }}
+      >
+        Tap a letter to pin it in place
+      </div>
     </div>
   );
 }
