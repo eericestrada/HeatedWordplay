@@ -6,6 +6,7 @@ interface TileProps {
   isActive: boolean;
   isRevealing: boolean;
   pinned?: boolean;
+  size?: number;
   onClick?: () => void;
 }
 
@@ -54,6 +55,7 @@ export default function Tile({
   isActive,
   isRevealing,
   pinned = false,
+  size,
   onClick,
 }: TileProps) {
   const state = resolveState(letter, status, isActive);
@@ -67,17 +69,20 @@ export default function Tile({
   if (isRevealing) transform = "rotateX(360deg)";
   else if (letter && !status) transform = "scale(1.06)";
 
+  const tileSize = size ? `${size}px` : "clamp(36px, 10vw, 56px)";
+  const tileFontSize = size ? `${Math.round(size * 0.48)}px` : "clamp(18px, 5vw, 26px)";
+
   return (
     <div
       onClick={onClick}
       className="font-mono font-bold uppercase tracking-[0.02em]"
       style={{
-        width: "clamp(36px, 10vw, 56px)",
-        height: "clamp(36px, 10vw, 56px)",
+        width: tileSize,
+        height: tileSize,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: "clamp(18px, 5vw, 26px)",
+        fontSize: tileFontSize,
         borderRadius: "8px",
         border: "2px solid",
         transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -117,6 +122,8 @@ interface TileRowProps {
   isActive: boolean;
   currentInput: string;
   isRevealing: boolean;
+  size?: number;
+  gap?: number;
 }
 
 export function TileRow({
@@ -125,6 +132,8 @@ export function TileRow({
   isActive,
   currentInput,
   isRevealing,
+  size,
+  gap,
 }: TileRowProps) {
   const tiles = [];
   for (let i = 0; i < wordLength; i++) {
@@ -143,10 +152,11 @@ export function TileRow({
         status={status}
         isActive={isActive}
         isRevealing={isRevealing}
+        size={size}
       />,
     );
   }
   return (
-    <div className="flex gap-1.5 justify-center">{tiles}</div>
+    <div className="flex justify-center" style={{ gap: `${gap ?? 6}px` }}>{tiles}</div>
   );
 }

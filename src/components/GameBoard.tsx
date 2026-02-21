@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
@@ -128,6 +128,37 @@ export default function GameBoard({
       savedAt: Date.now(),
     });
   }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, gameOver]);
+
+  // Dynamic tile sizing — measure grid area and compute tile size to fill it
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [tileSize, setTileSize] = useState(0);
+
+  useEffect(() => {
+    const measure = () => {
+      const el = gridRef.current;
+      if (!el) return;
+      const availW = el.clientWidth;
+      const availH = el.clientHeight;
+      const gap = 6;
+      // Max tile width: fill the row (wordLength tiles + gaps)
+      const maxByWidth = Math.floor((availW - gap * (wordLength - 1)) / wordLength);
+      // Max tile height: fill all 6 rows + gaps vertically
+      const maxByHeight = Math.floor((availH - gap * (MAX_GUESSES - 1)) / MAX_GUESSES);
+      // Use the smaller of the two, clamped to a reasonable range
+      const size = Math.max(32, Math.min(maxByWidth, maxByHeight, 64));
+      setTileSize(size);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // Re-measure after a short delay to account for layout settling
+    const timer = setTimeout(measure, 50);
+    return () => {
+      window.removeEventListener("resize", measure);
+      clearTimeout(timer);
+    };
+  }, [wordLength]);
+
+  const tileGap = tileSize > 44 ? 6 : 4;
 
   const totalCount = completedRows.length;
   const filledCount = grid.filter((c) => c.letter).length;
@@ -488,7 +519,7 @@ export default function GameBoard({
     const isRevealing = revealingRow === i;
     displayRows.push(
       <div key={`done-${i}`}>
-        <div className="flex gap-1.5 justify-center">
+        <div className="flex justify-center" style={{ gap: `${tileGap}px` }}>
           {row.result.map((cell, ci) => {
             const revealed = !isRevealing || ci < revealedCount;
             return (
@@ -498,6 +529,7 @@ export default function GameBoard({
                 status={revealed ? cell.status : null}
                 isActive={false}
                 isRevealing={isRevealing && ci === revealedCount - 1}
+                size={tileSize || undefined}
               />
             );
           })}
@@ -514,7 +546,7 @@ export default function GameBoard({
         key="active"
         style={{ animation: shake ? "shake 0.4s ease" : "none" }}
       >
-        <div className="flex gap-1.5 justify-center">
+        <div className="flex justify-center" style={{ gap: `${tileGap}px` }}>
           {grid.map((cell, i) => (
             <Tile
               key={i}
@@ -523,6 +555,7 @@ export default function GameBoard({
               isActive={hasContent ? !!cell.letter : i === 0}
               isRevealing={false}
               pinned={cell.pinned}
+              size={tileSize || undefined}
               onClick={cell.letter ? () => togglePin(i) : undefined}
             />
           ))}
@@ -573,6 +606,8 @@ export default function GameBoard({
             isActive={false}
             currentInput=""
             isRevealing={false}
+            size={tileSize || undefined}
+            gap={tileGap}
           />
         </div>,
       );
@@ -580,9 +615,9 @@ export default function GameBoard({
   }
 
   return (
-    <div className="flex flex-col h-full max-w-[520px] mx-auto px-3 justify-end">
+    <div className="flex flex-col h-full max-w-[520px] mx-auto px-3">
       {/* Header */}
-      <div className="flex items-center justify-between w-full py-2">
+      <div className="flex items-center justify-between w-full shrink-0 py-1">
         <button
           onClick={onBack}
           className="font-body"
@@ -611,58 +646,58 @@ export default function GameBoard({
         </div>
       </div>
 
-      {/* Message */}
-      <div className="h-[26px] flex items-center justify-center">
-        {evaluating ? (
-          <div
-            className="font-body"
-            style={{
-              fontSize: "13px",
-              color: "rgba(255,180,60,0.7)",
-              background: "rgba(255,180,60,0.08)",
-              padding: "5px 16px",
-              borderRadius: "6px",
-            }}
-          >
-            Checking...
-          </div>
-        ) : evalError ? (
-          <div
-            className="font-body"
-            style={{
-              fontSize: "13px",
-              color: "rgba(255,100,100,0.8)",
-              background: "rgba(255,100,100,0.08)",
-              padding: "5px 16px",
-              borderRadius: "6px",
-            }}
-          >
-            {evalError}
-          </div>
-        ) : message ? (
-          <div
-            className="font-body"
-            style={{
-              fontSize: "13px",
-              color: "#f5f0e8",
-              background: "rgba(255,255,255,0.12)",
-              padding: "5px 16px",
-              borderRadius: "6px",
-              animation: "fadeUp 0.2s ease",
-            }}
-          >
-            {message}
-          </div>
-        ) : null}
-      </div>
+      {/* Grid area — flex-1 to fill available space, grid centered within */}
+      <div ref={gridRef} className="flex-1 flex flex-col items-center justify-center min-h-0">
+        {/* Message */}
+        <div className="h-[24px] flex items-center justify-center shrink-0">
+          {evaluating ? (
+            <div
+              className="font-body"
+              style={{
+                fontSize: "13px",
+                color: "rgba(255,180,60,0.7)",
+                background: "rgba(255,180,60,0.08)",
+                padding: "4px 16px",
+                borderRadius: "6px",
+              }}
+            >
+              Checking...
+            </div>
+          ) : evalError ? (
+            <div
+              className="font-body"
+              style={{
+                fontSize: "13px",
+                color: "rgba(255,100,100,0.8)",
+                background: "rgba(255,100,100,0.08)",
+                padding: "4px 16px",
+                borderRadius: "6px",
+              }}
+            >
+              {evalError}
+            </div>
+          ) : message ? (
+            <div
+              className="font-body"
+              style={{
+                fontSize: "13px",
+                color: "#f5f0e8",
+                background: "rgba(255,255,255,0.12)",
+                padding: "4px 16px",
+                borderRadius: "6px",
+                animation: "fadeUp 0.2s ease",
+              }}
+            >
+              {message}
+            </div>
+          ) : null}
+        </div>
 
-      {/* Grid */}
-      <div className="flex flex-col gap-1.5 items-center py-2">
-        {displayRows}
+        {/* Grid rows */}
+        <div className="flex flex-col items-center" style={{ gap: `${tileGap}px` }}>
+          {displayRows}
+        </div>
       </div>
-
-      {/* Flexible spacer between grid and controls */}
-      <div className="flex-1 min-h-1 max-h-4" />
 
       {/* Clue dialog (dismissable) */}
       {showClueDialog && (
