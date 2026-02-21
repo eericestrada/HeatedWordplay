@@ -206,11 +206,12 @@ export default function App() {
   };
 
   // Shell wrapper (used by all screens)
-  const shell = (content: React.ReactNode, showTitle = true, hideOverflow = false) => (
+  const shell = (content: React.ReactNode, showTitle = true, hideOverflow = false, maxWidth = "520px") => (
     <div className="h-screen w-full flex justify-center" style={{ background: "#0f0d0b" }}>
       <div
-        className="h-full flex flex-col relative overflow-hidden w-full max-w-[520px]"
+        className="h-full flex flex-col relative overflow-hidden w-full"
         style={{
+          maxWidth,
           background:
             "linear-gradient(165deg, #1a1410 0%, #0f0d0b 40%, #121016 100%)",
           color: "#f5f0e8",
@@ -300,6 +301,7 @@ export default function App() {
   }
 
   // Authenticated — game screens
+  const playMaxWidth = screen === "play" ? "100%" : "520px";
   return shell(
     <>
       {/* User header (on select screen) */}
@@ -500,5 +502,6 @@ export default function App() {
     </>,
     /* showTitle */ screen !== "play",
     /* hideOverflow */ screen === "play",
+    /* maxWidth */ playMaxWidth,
   );
 }

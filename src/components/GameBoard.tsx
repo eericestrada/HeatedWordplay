@@ -144,8 +144,8 @@ export default function GameBoard({
       const maxByWidth = Math.floor((availW - gap * (wordLength - 1)) / wordLength);
       // Max tile height: fill all 6 rows + gaps vertically
       const maxByHeight = Math.floor((availH - gap * (MAX_GUESSES - 1)) / MAX_GUESSES);
-      // Use the smaller of the two, clamped to a reasonable range
-      const size = Math.max(32, Math.min(maxByWidth, maxByHeight, 64));
+      // Use the smaller of the two, with a minimum floor
+      const size = Math.max(32, Math.min(maxByWidth, maxByHeight));
       setTileSize(size);
     };
     // Measure once after layout settles — no resize listener to avoid
@@ -611,7 +611,7 @@ export default function GameBoard({
   }
 
   return (
-    <div className="flex flex-col h-full max-w-[520px] mx-auto px-3">
+    <div className="flex flex-col h-full mx-auto px-1.5">
       {/* Header */}
       <div className="flex items-center justify-between w-full shrink-0 py-1">
         <button
