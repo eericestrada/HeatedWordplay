@@ -78,6 +78,15 @@ export interface ComplexityRange {
   bg: string;
 }
 
+export interface PairStreak {
+  partner_id: string;
+  partner_username: string;
+  partner_display_name: string | null;
+  current_streak: number;
+  last_activity_date: string;
+  total_completions: number;
+}
+
 export interface ActivityItem {
   id: string;
   user_id: string;

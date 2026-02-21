@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { DictionaryEntry } from "../types";
+import type { DictionaryEntry, PairStreak } from "../types";
 
 /**
  * Invoke a Supabase Edge Function with automatic session refresh on 401.
@@ -190,6 +190,21 @@ export async function getAttempt(puzzleId: string) {
 
   if (error || !data) return null;
   return data;
+}
+
+/**
+ * Fetch bilateral streaks for the current user with all partners.
+ * Returns current streak count, last activity date, and total completions per partner.
+ */
+export async function getPairStreaks(userId: string): Promise<PairStreak[]> {
+  const { data, error } = await supabase.rpc("get_pair_streaks", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("Failed to fetch pair streaks:", error);
+    return [];
+  }
+  return (data as PairStreak[]) || [];
 }
 
 /**

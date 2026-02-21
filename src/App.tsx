@@ -11,7 +11,7 @@ import ShareScreen from "./components/ShareScreen";
 import PeopleScreen from "./components/PeopleScreen";
 import ReviewScreen from "./components/ReviewScreen";
 import ActivityFeed from "./components/ActivityFeed";
-import { saveAttemptGuesses } from "./lib/api";
+import { saveAttemptGuesses, getPairStreaks } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import type {
   Puzzle,
@@ -20,6 +20,7 @@ import type {
   Medal,
   CompletedRow,
   SubmitWordData,
+  PairStreak,
 } from "./types";
 
 export default function App() {
@@ -44,6 +45,17 @@ export default function App() {
   const [groups, setGroups] = useState<Array<{ id: string; name: string; invite_code: string }>>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
+
+  // Streaks data — indexed by partner_id for fast lookup
+  const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
+
+  const fetchStreaks = useCallback(async () => {
+    if (!user) return;
+    const data = await getPairStreaks(user.id);
+    const map: Record<string, PairStreak> = {};
+    for (const s of data) map[s.partner_id] = s;
+    setStreaks(map);
+  }, [user]);
 
   // Fetch groups
   const fetchGroups = useCallback(async () => {
@@ -118,8 +130,9 @@ export default function App() {
     if (user) {
       fetchPuzzles();
       fetchGroups();
+      fetchStreaks();
     }
-  }, [user, fetchPuzzles, fetchGroups]);
+  }, [user, fetchPuzzles, fetchGroups, fetchStreaks]);
 
   // Handle hardware/browser back button — navigate to select screen
   useEffect(() => {
@@ -188,6 +201,7 @@ export default function App() {
     setSelectedPuzzle(null);
     setResultData(null);
     fetchPuzzles(); // Refresh puzzle list
+    fetchStreaks(); // Refresh streaks (may have changed after playing)
   };
 
   const handleSubmitWord = (data: SubmitWordData) => {
@@ -426,6 +440,7 @@ export default function App() {
               <PuzzleSelector
                 puzzles={puzzles}
                 completedPuzzles={completedPuzzles}
+                streaks={streaks}
                 onSelect={handleSelect}
                 onReview={(p) => {
                   setSelectedPuzzle(p);
@@ -444,6 +459,7 @@ export default function App() {
           puzzle={selectedPuzzle}
           onComplete={handleComplete}
           onBack={handleBack}
+          creatorStreak={selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0}
         />
       )}
       {screen === "result" && selectedPuzzle && resultData && (
@@ -455,6 +471,7 @@ export default function App() {
           magnetsUsed={resultData.magnetsUsed}
           rows={resultData.rows}
           onBack={handleBack}
+          creatorStreak={selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0}
         />
       )}
       {screen === "groups" && (

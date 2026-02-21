@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Puzzle, CompletionStatus } from "../types";
+import type { Puzzle, CompletionStatus, PairStreak } from "../types";
 import {
   getMedalEmoji,
   getComplexityRange,
@@ -10,6 +10,7 @@ import { useAuth } from "../contexts/AuthContext";
 interface PuzzleSelectorProps {
   puzzles: Puzzle[];
   completedPuzzles: Record<string | number, CompletionStatus>;
+  streaks?: Record<string, PairStreak>;
   onSelect: (puzzle: Puzzle) => void;
   onReview?: (puzzle: Puzzle) => void;
   onSubmitWord: () => void;
@@ -18,6 +19,7 @@ interface PuzzleSelectorProps {
 export default function PuzzleSelector({
   puzzles,
   completedPuzzles,
+  streaks = {},
   onSelect,
   onReview,
   onSubmitWord,
@@ -204,6 +206,7 @@ export default function PuzzleSelector({
           const range = getComplexityRange(p.complexity);
           const isFinished = completed && completed !== "submitted";
           const isOwn = completed === "submitted";
+          const creatorStreak = p.creator_id ? streaks[p.creator_id]?.current_streak || 0 : 0;
 
           const handleClick = () => {
             if (isFinished && onReview) {
@@ -261,6 +264,21 @@ export default function PuzzleSelector({
                       }}
                     >
                       Test it
+                    </span>
+                  )}
+                  {creatorStreak > 0 && !isOwn && (
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: "10px",
+                        color: "rgba(255,140,40,0.85)",
+                        background: "rgba(255,140,40,0.1)",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      🔥 {creatorStreak}
                     </span>
                   )}
                 </div>

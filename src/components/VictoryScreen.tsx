@@ -15,6 +15,7 @@ interface VictoryScreenProps {
   magnetsUsed: number;
   rows: CompletedRow[];
   onBack: () => void;
+  creatorStreak?: number;
 }
 
 export default function VictoryScreen({
@@ -25,6 +26,7 @@ export default function VictoryScreen({
   magnetsUsed,
   rows,
   onBack,
+  creatorStreak = 0,
 }: VictoryScreenProps) {
   const multiplier = getMultiplier(medal);
   const cluePenalty = usedClue ? 0.5 : 1.0;
@@ -288,6 +290,27 @@ export default function VictoryScreen({
           : `Used all ${totalGuesses} guesses`}
         {aids && ` · ${aids}`}
       </div>
+
+      {/* Streak callout */}
+      {creatorStreak > 0 && puzzle.creator !== "You" && (
+        <div
+          className="w-full rounded-xl flex items-center justify-center gap-2"
+          style={{
+            background: "rgba(255,140,40,0.06)",
+            border: "1px solid rgba(255,140,40,0.15)",
+            padding: "14px 20px",
+          }}
+        >
+          <span style={{ fontSize: "20px" }}>🔥</span>
+          <div className="font-body" style={{ fontSize: "14px", color: "rgba(255,140,40,0.9)" }}>
+            {creatorStreak === 1 ? (
+              <>New streak started with <strong>{puzzle.creator}</strong>!</>
+            ) : (
+              <><strong>{creatorStreak}-day streak</strong> with {puzzle.creator}</>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Share preview */}
       <div

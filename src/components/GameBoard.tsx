@@ -73,12 +73,14 @@ interface GameBoardProps {
     rows: CompletedRow[],
   ) => void;
   onBack: () => void;
+  creatorStreak?: number;
 }
 
 export default function GameBoard({
   puzzle,
   onComplete,
   onBack,
+  creatorStreak = 0,
 }: GameBoardProps) {
   const { user } = useAuth();
   const wordLength = puzzle.wordLength || puzzle.word.length;
@@ -631,10 +633,25 @@ export default function GameBoard({
           ← Back
         </button>
         <div
-          className="font-body"
+          className="font-body flex items-center gap-1.5"
           style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}
         >
           {puzzle.creator === "You" ? "Your" : `${puzzle.creator}'s`} puzzle
+          {creatorStreak > 0 && puzzle.creator !== "You" && (
+            <span
+              className="font-mono"
+              style={{
+                fontSize: "10px",
+                color: "rgba(255,140,40,0.85)",
+                background: "rgba(255,140,40,0.1)",
+                padding: "1px 5px",
+                borderRadius: "3px",
+                fontWeight: 600,
+              }}
+            >
+              🔥 {creatorStreak}
+            </span>
+          )}
         </div>
         <div
           className="font-mono"

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
-import type { ConnectedUser } from "../types";
+import { getPairStreaks } from "../lib/api";
+import type { ConnectedUser, PairStreak } from "../types";
 
 interface PeopleScreenProps {
   onBack: () => void;
@@ -10,20 +11,49 @@ interface PeopleScreenProps {
 export default function PeopleScreen({ onBack }: PeopleScreenProps) {
   const { profile } = useAuth();
   const [users, setUsers] = useState<ConnectedUser[]>([]);
+  const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile) return;
-    supabase
-      .rpc("get_connected_users", { p_user_id: profile.id })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("Failed to fetch connected users:", error);
-        }
-        setUsers((data as ConnectedUser[]) || []);
-        setLoading(false);
-      });
+
+    // Fetch connected users and streaks in parallel
+    Promise.all([
+      supabase
+        .rpc("get_connected_users", { p_user_id: profile.id })
+        .then(({ data, error }) => {
+          if (error) console.error("Failed to fetch connected users:", error);
+          return (data as ConnectedUser[]) || [];
+        }),
+      getPairStreaks(profile.id),
+    ]).then(([connectedUsers, pairStreaks]) => {
+      setUsers(connectedUsers);
+      // Index streaks by partner_id for fast lookup
+      const streakMap: Record<string, PairStreak> = {};
+      for (const s of pairStreaks) {
+        streakMap[s.partner_id] = s;
+      }
+      setStreaks(streakMap);
+      setLoading(false);
+    });
   }, [profile]);
+
+  // Sort users: active streaks first (highest count), then alphabetical
+  const sortedUsers = [...users].sort((a, b) => {
+    const sa = streaks[a.user_id]?.current_streak || 0;
+    const sb = streaks[b.user_id]?.current_streak || 0;
+    if (sb !== sa) return sb - sa;
+    const nameA = (a.display_name || a.username).toLowerCase();
+    const nameB = (b.display_name || b.username).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
+  // Check if a streak is "at risk" (last activity was yesterday, none today)
+  const isAtRisk = (s: PairStreak | undefined): boolean => {
+    if (!s || s.current_streak === 0) return false;
+    const today = new Date().toISOString().split("T")[0];
+    return s.last_activity_date < today;
+  };
 
   return (
     <div
@@ -65,7 +95,7 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
         >
           Loading...
         </div>
-      ) : users.length === 0 ? (
+      ) : sortedUsers.length === 0 ? (
         <div
           className="font-body text-center rounded-lg w-full"
           style={{
@@ -80,51 +110,103 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-1.5 w-full">
-          {users.map((u) => (
-            <div
-              key={u.user_id}
-              className="flex items-center gap-3 rounded-lg"
-              style={{
-                padding: "12px 14px",
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.05)",
-              }}
-            >
+          {sortedUsers.map((u) => {
+            const s = streaks[u.user_id];
+            const streak = s?.current_streak || 0;
+            const atRisk = isAtRisk(s);
+
+            return (
               <div
-                className="flex items-center justify-center rounded-full shrink-0"
+                key={u.user_id}
+                className="flex items-center gap-3 rounded-lg"
                 style={{
-                  width: "36px",
-                  height: "36px",
-                  background: "rgba(255,180,60,0.1)",
-                  color: "rgba(255,180,60,0.7)",
-                  fontSize: "15px",
-                  fontWeight: 700,
+                  padding: "12px 14px",
+                  background: streak > 0
+                    ? "rgba(255,140,40,0.04)"
+                    : "rgba(255,255,255,0.03)",
+                  border: streak > 0
+                    ? "1px solid rgba(255,140,40,0.12)"
+                    : "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                {(u.display_name || u.username).charAt(0).toUpperCase()}
-              </div>
-              <div className="flex flex-col min-w-0 flex-1">
                 <div
-                  className="font-body truncate"
-                  style={{ fontSize: "15px", color: "#f5f0e8" }}
+                  className="flex items-center justify-center rounded-full shrink-0"
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    background: streak > 0
+                      ? "rgba(255,140,40,0.15)"
+                      : "rgba(255,180,60,0.1)",
+                    color: streak > 0
+                      ? "rgba(255,140,40,0.85)"
+                      : "rgba(255,180,60,0.7)",
+                    fontSize: "15px",
+                    fontWeight: 700,
+                  }}
                 >
-                  {u.display_name || u.username}
+                  {(u.display_name || u.username).charAt(0).toUpperCase()}
                 </div>
-                <div
-                  className="font-mono"
-                  style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)" }}
-                >
-                  @{u.username}
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div
+                    className="font-body truncate flex items-center gap-2"
+                    style={{ fontSize: "15px", color: "#f5f0e8" }}
+                  >
+                    {u.display_name || u.username}
+                    {streak > 0 && (
+                      <span
+                        className="font-mono shrink-0"
+                        style={{
+                          fontSize: "12px",
+                          color: atRisk
+                            ? "rgba(255,180,60,0.9)"
+                            : "rgba(255,140,40,0.85)",
+                          background: atRisk
+                            ? "rgba(255,180,60,0.12)"
+                            : "rgba(255,140,40,0.12)",
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {atRisk ? "⚠" : "🔥"} {streak}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="font-mono"
+                    style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)" }}
+                  >
+                    @{u.username}
+                    {s && s.total_completions > 0 && (
+                      <span style={{ color: "rgba(255,255,255,0.15)" }}>
+                        {" "}· {s.total_completions} puzzle{s.total_completions !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {streak > 0 && atRisk ? (
+                  <div
+                    className="font-body shrink-0 text-right"
+                    style={{
+                      fontSize: "10px",
+                      color: "rgba(255,180,60,0.7)",
+                      lineHeight: 1.3,
+                      maxWidth: "60px",
+                    }}
+                  >
+                    play today!
+                  </div>
+                ) : (
+                  <div
+                    className="font-mono shrink-0"
+                    style={{ fontSize: "11px", color: "rgba(255,180,60,0.4)" }}
+                  >
+                    {u.shared_group_count} {u.shared_group_count === 1 ? "group" : "groups"}
+                  </div>
+                )}
               </div>
-              <div
-                className="font-mono shrink-0"
-                style={{ fontSize: "11px", color: "rgba(255,180,60,0.4)" }}
-              >
-                {u.shared_group_count} {u.shared_group_count === 1 ? "group" : "groups"}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
