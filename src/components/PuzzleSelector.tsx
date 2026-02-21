@@ -244,7 +244,7 @@ export default function PuzzleSelector({
                     marginBottom: "4px",
                   }}
                 >
-                  {p.creator === "You" ? "Your" : `${p.creator}'s`} puzzle
+                  {p.creator === "You" ? "You" : p.creator}
                   {isFinished && (
                     <span style={{ fontSize: "16px" }}>
                       {getMedalEmoji(
@@ -252,7 +252,7 @@ export default function PuzzleSelector({
                       )}
                     </span>
                   )}
-                  {isOwn && (
+                  {isOwn && !p.hasAttempted && (
                     <span
                       className="font-mono"
                       style={{
@@ -264,6 +264,11 @@ export default function PuzzleSelector({
                       }}
                     >
                       Test it
+                    </span>
+                  )}
+                  {isOwn && p.hasAttempted && (
+                    <span style={{ fontSize: "14px", color: "rgba(26,158,158,0.6)" }}>
+                      ✓
                     </span>
                   )}
                   {creatorStreak > 0 && !isOwn && (
@@ -311,13 +316,19 @@ export default function PuzzleSelector({
                   className="font-mono rounded-md"
                   style={{
                     fontSize: "13px",
-                    color: "rgba(255,180,60,0.7)",
-                    background: "rgba(255,180,60,0.08)",
+                    color: isFinished
+                      ? "rgba(255,255,255,0.5)"
+                      : "rgba(255,180,60,0.7)",
+                    background: isFinished
+                      ? "rgba(255,255,255,0.05)"
+                      : "rgba(255,180,60,0.08)",
                     padding: "4px 10px",
                     letterSpacing: "0.06em",
                   }}
                 >
-                  {p.word.length} letters
+                  {isFinished && !p.word.startsWith("?")
+                    ? p.word.toUpperCase()
+                    : `${p.word.length} letters`}
                 </div>
                 {isFinished ? (
                   <div
