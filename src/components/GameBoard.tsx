@@ -148,14 +148,10 @@ export default function GameBoard({
       const size = Math.max(32, Math.min(maxByWidth, maxByHeight, 64));
       setTileSize(size);
     };
-    measure();
-    window.addEventListener("resize", measure);
-    // Re-measure after a short delay to account for layout settling
+    // Measure once after layout settles — no resize listener to avoid
+    // mobile scroll-triggered resizing (address bar show/hide changes viewport)
     const timer = setTimeout(measure, 50);
-    return () => {
-      window.removeEventListener("resize", measure);
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [wordLength]);
 
   const tileGap = tileSize > 44 ? 6 : 4;
