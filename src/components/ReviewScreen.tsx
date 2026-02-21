@@ -7,14 +7,16 @@ import {
   getMultiplier,
   formatDate,
 } from "../utils/scoring";
+import PuzzleStatsPanel from "./PuzzleStatsPanel";
 import type { Puzzle, CompletedRow, ResultCell, Medal } from "../types";
 
 interface ReviewScreenProps {
   puzzle: Puzzle;
   onBack: () => void;
+  groupId?: string | null;
 }
 
-export default function ReviewScreen({ puzzle, onBack }: ReviewScreenProps) {
+export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewScreenProps) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<CompletedRow[]>([]);
   const [attempt, setAttempt] = useState<Record<string, unknown> | null>(null);
@@ -273,6 +275,9 @@ export default function ReviewScreen({ puzzle, onBack }: ReviewScreenProps) {
           </div>
         </div>
       )}
+
+      {/* Per-puzzle group stats */}
+      <PuzzleStatsPanel puzzleId={puzzle.id as string} groupId={groupId} />
 
       {/* Actions */}
       <div className="flex gap-2.5 w-full">

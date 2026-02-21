@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
+import { getGroupLeaderboard } from "../lib/api";
 import { getMedalEmoji } from "../utils/scoring";
+import type { LeaderboardEntry } from "../types";
 
 interface Group {
   id: string;
@@ -90,7 +92,9 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
   const [activityLoading, setActivityLoading] = useState(false);
   const [groupPuzzles, setGroupPuzzles] = useState<GroupPuzzle[]>([]);
   const [puzzlesLoading, setPuzzlesLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState<"activity" | "members" | "puzzles">("puzzles");
+  const [detailTab, setDetailTab] = useState<"activity" | "members" | "puzzles" | "leaderboard">("puzzles");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -166,6 +170,13 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
     setPuzzlesLoading(false);
   };
 
+  const fetchLeaderboard = async (groupId: string) => {
+    setLeaderboardLoading(true);
+    const data = await getGroupLeaderboard(groupId);
+    setLeaderboard(data);
+    setLeaderboardLoading(false);
+  };
+
   const openGroupDetail = (group: Group) => {
     setSelectedGroup(group);
     setMode("detail");
@@ -175,6 +186,7 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
     fetchMembers(group.id);
     fetchActivity(group.id);
     fetchGroupPuzzles(group.id);
+    fetchLeaderboard(group.id);
   };
 
   const copyInviteCode = async (inviteCode: string) => {
@@ -567,15 +579,15 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
 
         {/* Tab selector: Puzzles / Activity / Members */}
         <div className="flex gap-1 w-full rounded-lg" style={{ background: "rgba(255,255,255,0.03)", padding: "3px" }}>
-          {(["puzzles", "activity", "members"] as const).map((tab) => (
+          {(["puzzles", "leaderboard", "activity", "members"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setDetailTab(tab)}
               className="font-body flex-1 rounded-md"
               style={{
-                fontSize: "13px",
+                fontSize: "12px",
                 fontWeight: 600,
-                padding: "8px 12px",
+                padding: "8px 6px",
                 border: "none",
                 background: detailTab === tab ? "rgba(255,180,60,0.12)" : "transparent",
                 color: detailTab === tab ? "rgba(255,180,60,0.9)" : "rgba(255,255,255,0.35)",
@@ -584,10 +596,12 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
               }}
             >
               {tab === "puzzles"
-                ? `Puzzles (${puzzlesLoading ? "..." : groupPuzzles.length})`
-                : tab === "activity"
-                  ? "Activity"
-                  : `Members (${membersLoading ? "..." : members.length})`}
+                ? "Puzzles"
+                : tab === "leaderboard"
+                  ? "Ranks"
+                  : tab === "activity"
+                    ? "Activity"
+                    : "Members"}
             </button>
           ))}
         </div>
@@ -724,6 +738,117 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                         )}
                       </div>
                     </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Leaderboard tab */}
+        {detailTab === "leaderboard" && (
+          <div className="w-full">
+            {leaderboardLoading ? (
+              <div
+                className="font-body text-center"
+                style={{ fontSize: "13px", color: "rgba(255,255,255,0.25)", padding: "16px 0" }}
+              >
+                Loading rankings...
+              </div>
+            ) : leaderboard.length === 0 ? (
+              <div
+                className="font-body text-center rounded-lg"
+                style={{
+                  fontSize: "13px",
+                  color: "rgba(255,255,255,0.3)",
+                  background: "rgba(255,255,255,0.02)",
+                  padding: "24px 16px",
+                  border: "1px solid rgba(255,255,255,0.04)",
+                }}
+              >
+                No scores yet. Play some puzzles to see rankings!
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {leaderboard.map((entry, i) => {
+                  const isMe = entry.user_id === profile?.id;
+                  const rankDisplay = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+                  const totalPlayed = entry.puzzles_solved + entry.puzzles_failed;
+                  return (
+                    <div
+                      key={entry.user_id}
+                      className="rounded-lg"
+                      style={{
+                        background: isMe
+                          ? "rgba(255,180,60,0.06)"
+                          : "rgba(255,255,255,0.02)",
+                        border: isMe
+                          ? "1px solid rgba(255,180,60,0.15)"
+                          : "1px solid rgba(255,255,255,0.04)",
+                        padding: "12px 14px",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            style={{
+                              fontSize: i < 3 ? "18px" : "13px",
+                              width: "24px",
+                              textAlign: "center",
+                              color: i >= 3 ? "rgba(255,255,255,0.3)" : undefined,
+                            }}
+                            className={i >= 3 ? "font-mono" : ""}
+                          >
+                            {rankDisplay}
+                          </span>
+                          <div className="min-w-0">
+                            <div
+                              className="font-body truncate"
+                              style={{
+                                fontSize: "14px",
+                                color: isMe ? "rgba(255,180,60,0.9)" : "#f5f0e8",
+                                fontWeight: isMe ? 600 : 400,
+                              }}
+                            >
+                              {entry.display_name || entry.username}
+                              {isMe && (
+                                <span style={{ fontSize: "11px", color: "rgba(255,180,60,0.5)", marginLeft: "6px" }}>
+                                  (you)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          className="font-mono shrink-0"
+                          style={{
+                            fontSize: "18px",
+                            fontWeight: 700,
+                            color: isMe ? "rgba(255,180,60,0.95)" : "#f5f0e8",
+                          }}
+                        >
+                          {entry.total_score}
+                        </div>
+                      </div>
+                      {/* Stats row */}
+                      <div
+                        className="flex items-center gap-3 font-mono"
+                        style={{
+                          fontSize: "11px",
+                          color: "rgba(255,255,255,0.3)",
+                          marginTop: "4px",
+                          marginLeft: "36px",
+                        }}
+                      >
+                        {totalPlayed > 0 && (
+                          <span>{entry.puzzles_solved}/{totalPlayed} solved</span>
+                        )}
+                        {entry.gold_count > 0 && <span>🥇{entry.gold_count}</span>}
+                        {entry.silver_count > 0 && <span>🥈{entry.silver_count}</span>}
+                        {entry.bronze_count > 0 && <span>🥉{entry.bronze_count}</span>}
+                        {entry.avg_guesses && <span>{entry.avg_guesses} avg</span>}
+                      </div>
+                    </div>
                   );
                 })}
               </div>

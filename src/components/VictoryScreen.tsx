@@ -6,6 +6,7 @@ import {
   getMedalLabel,
   formatDate,
 } from "../utils/scoring";
+import PuzzleStatsPanel from "./PuzzleStatsPanel";
 
 interface VictoryScreenProps {
   puzzle: Puzzle;
@@ -16,6 +17,7 @@ interface VictoryScreenProps {
   rows: CompletedRow[];
   onBack: () => void;
   creatorStreak?: number;
+  groupId?: string | null;
 }
 
 export default function VictoryScreen({
@@ -27,6 +29,7 @@ export default function VictoryScreen({
   rows,
   onBack,
   creatorStreak = 0,
+  groupId = null,
 }: VictoryScreenProps) {
   const multiplier = getMultiplier(medal);
   const cluePenalty = usedClue ? 0.5 : 1.0;
@@ -311,6 +314,9 @@ export default function VictoryScreen({
           </div>
         </div>
       )}
+
+      {/* Per-puzzle group stats */}
+      <PuzzleStatsPanel puzzleId={puzzle.id as string} groupId={groupId} />
 
       {/* Share preview */}
       <div

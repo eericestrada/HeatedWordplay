@@ -1,5 +1,12 @@
 import { supabase } from "./supabase";
-import type { DictionaryEntry, PairStreak } from "../types";
+import type {
+  DictionaryEntry,
+  PairStreak,
+  PuzzleStats,
+  LeaderboardEntry,
+  PlayerStats,
+  CreatorStats,
+} from "../types";
 
 /**
  * Invoke a Supabase Edge Function with automatic session refresh on 401.
@@ -205,6 +212,72 @@ export async function getPairStreaks(userId: string): Promise<PairStreak[]> {
     return [];
   }
   return (data as PairStreak[]) || [];
+}
+
+/**
+ * Per-puzzle stats: solve rate, guess distribution, and individual solver results.
+ */
+export async function getPuzzleStats(
+  puzzleId: string,
+  groupId: string,
+): Promise<PuzzleStats | null> {
+  const { data, error } = await supabase.rpc("get_puzzle_stats", {
+    p_puzzle_id: puzzleId,
+    p_group_id: groupId,
+  });
+  if (error) {
+    console.error("Failed to fetch puzzle stats:", error);
+    return null;
+  }
+  return data as PuzzleStats;
+}
+
+/**
+ * Group leaderboard: ranks players by total score within a group.
+ */
+export async function getGroupLeaderboard(
+  groupId: string,
+): Promise<LeaderboardEntry[]> {
+  const { data, error } = await supabase.rpc("get_group_leaderboard", {
+    p_group_id: groupId,
+  });
+  if (error) {
+    console.error("Failed to fetch group leaderboard:", error);
+    return [];
+  }
+  return (data as LeaderboardEntry[]) || [];
+}
+
+/**
+ * Personal career stats: overall performance across all puzzles.
+ */
+export async function getPlayerStats(
+  userId: string,
+): Promise<PlayerStats | null> {
+  const { data, error } = await supabase.rpc("get_player_stats", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("Failed to fetch player stats:", error);
+    return null;
+  }
+  return data as PlayerStats;
+}
+
+/**
+ * Creator stats: how a player's submitted puzzles have performed.
+ */
+export async function getCreatorStats(
+  userId: string,
+): Promise<CreatorStats | null> {
+  const { data, error } = await supabase.rpc("get_creator_stats", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("Failed to fetch creator stats:", error);
+    return null;
+  }
+  return data as CreatorStats;
 }
 
 /**

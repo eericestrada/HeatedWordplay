@@ -62,7 +62,7 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats";
 
 export interface ConnectedUser {
   user_id: string;
@@ -85,6 +85,69 @@ export interface PairStreak {
   current_streak: number;
   last_activity_date: string;
   total_completions: number;
+}
+
+export interface PuzzleStats {
+  total_attempts: number;
+  total_solved: number;
+  avg_guesses: number | null;
+  guess_distribution: Record<string, number>;
+  solvers: Array<{
+    user_id: string;
+    username: string;
+    display_name: string | null;
+    medal: Medal | null;
+    total_guesses: number;
+    score: number;
+    completed_at: string;
+  }>;
+}
+
+export interface LeaderboardEntry {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  total_score: number;
+  puzzles_solved: number;
+  puzzles_failed: number;
+  gold_count: number;
+  silver_count: number;
+  bronze_count: number;
+  avg_guesses: number | null;
+  best_score: number;
+}
+
+export interface PlayerStats {
+  total_attempted: number;
+  total_solved: number;
+  total_failed: number;
+  total_score: number;
+  best_score: number;
+  gold_count: number;
+  silver_count: number;
+  bronze_count: number;
+  avg_guesses: number | null;
+  puzzles_created: number;
+  puzzles_played_by_others: number;
+  current_solve_streak: number;
+}
+
+export interface CreatorStats {
+  total_puzzles: number;
+  total_plays: number;
+  total_solves: number;
+  total_fails: number;
+  avg_guesses: number | null;
+  stump_rate: number;
+  puzzles: Array<{
+    puzzle_id: string;
+    word: string;
+    complexity: number;
+    created_at: string;
+    play_count: number;
+    solve_count: number;
+    avg_guesses: number | null;
+  }>;
 }
 
 export interface ActivityItem {

@@ -9,6 +9,7 @@ import PuzzleSelector from "./components/PuzzleSelector";
 import SubmitWord from "./components/SubmitWord";
 import ShareScreen from "./components/ShareScreen";
 import PeopleScreen from "./components/PeopleScreen";
+import StatsScreen from "./components/StatsScreen";
 import ReviewScreen from "./components/ReviewScreen";
 import ActivityFeed from "./components/ActivityFeed";
 import { saveAttemptGuesses, getPairStreaks } from "./lib/api";
@@ -392,6 +393,19 @@ export default function App() {
               👤 People
             </button>
             <button
+              onClick={() => { setScreen("stats"); window.history.pushState({ screen: "stats" }, ""); }}
+              className="font-body"
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.3)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              📊 Stats
+            </button>
+            <button
               onClick={() => { setScreen("groups"); window.history.pushState({ screen: "groups" }, ""); }}
               className="font-body"
               style={{
@@ -472,6 +486,7 @@ export default function App() {
           rows={resultData.rows}
           onBack={handleBack}
           creatorStreak={selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0}
+          groupId={selectedGroupId}
         />
       )}
       {screen === "groups" && (
@@ -512,10 +527,13 @@ export default function App() {
         />
       )}
       {screen === "review" && selectedPuzzle && (
-        <ReviewScreen puzzle={selectedPuzzle} onBack={handleBack} />
+        <ReviewScreen puzzle={selectedPuzzle} onBack={handleBack} groupId={selectedGroupId} />
       )}
       {screen === "people" && (
         <PeopleScreen onBack={handleBack} />
+      )}
+      {screen === "stats" && (
+        <StatsScreen onBack={handleBack} />
       )}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={handleBack} />
