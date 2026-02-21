@@ -316,17 +316,17 @@ export default function PuzzleSelector({
                   className="font-mono rounded-md"
                   style={{
                     fontSize: "13px",
-                    color: isFinished
+                    color: isFinished || isOwn
                       ? "rgba(255,255,255,0.5)"
                       : "rgba(255,180,60,0.7)",
-                    background: isFinished
+                    background: isFinished || isOwn
                       ? "rgba(255,255,255,0.05)"
                       : "rgba(255,180,60,0.08)",
                     padding: "4px 10px",
                     letterSpacing: "0.06em",
                   }}
                 >
-                  {isFinished && !p.word.startsWith("?")
+                  {(isFinished || isOwn) && !p.word.startsWith("?")
                     ? p.word.toUpperCase()
                     : `${p.word.length} letters`}
                 </div>
