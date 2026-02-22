@@ -67,30 +67,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       profile,
-      needsUsername: !!profile && profile.username.startsWith("user_"),
+      needsUsername: !profile || profile.username.startsWith("user_"),
     }));
   };
 
   useEffect(() => {
-    let initialized = false;
     let mounted = true;
+    let settled = false;
 
-    const handleSession = async (session: Session | null, event?: string) => {
-      if (!mounted) return;
+    const handleSession = async (session: Session | null, isNewSignIn?: boolean) => {
+      if (!mounted || settled) return;
+      settled = true;
       if (session?.user) {
         try {
-          // Small delay on fresh sign-in for the DB trigger to create the profile
-          if (event === "SIGNED_IN" && initialized) {
-            await new Promise((r) => setTimeout(r, 500));
+          let profile: UserProfile | null = null;
+
+          if (isNewSignIn) {
+            // New sign-in: poll for the profile since the DB trigger
+            // that creates it may not have completed yet.
+            for (let attempt = 0; attempt < 10; attempt++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (!mounted) return;
+              profile = await fetchProfile(session.user.id);
+              if (profile) break;
+            }
+          } else {
+            profile = await fetchProfile(session.user.id);
           }
-          const profile = await fetchProfile(session.user.id);
+
           if (!mounted) return;
           setState({
             user: session.user,
             profile,
             session,
             loading: false,
-            needsUsername: !!profile && profile.username.startsWith("user_"),
+            needsUsername: !profile || profile.username.startsWith("user_"),
           });
         } catch (err) {
           console.error("Failed to fetch profile:", err);
@@ -114,20 +125,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Listen for auth changes (also fires INITIAL_SESSION on setup)
+    const initAuth = async () => {
+      // Step 1: If we landed here with a PKCE ?code= param, exchange it
+      // explicitly. The Supabase client's auto-detect can miss this.
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      if (code) {
+        try {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          // Clean the URL so the code isn't reused on refresh
+          window.history.replaceState({}, "", window.location.pathname);
+          if (!error && data.session) {
+            await handleSession(data.session, true);
+            return;
+          }
+          console.warn("Code exchange failed:", error?.message);
+        } catch (err) {
+          console.warn("Code exchange threw:", err);
+        }
+      }
+
+      // Step 2: No code param — try to restore an existing session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await handleSession(session, false);
+        return;
+      }
+
+      // Step 3: No session found — user is not authenticated
+      await handleSession(null);
+    };
+
+    initAuth();
+
+    // Listen for auth changes after init (token refresh, sign-out, etc.)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      await handleSession(session, event);
-      initialized = true;
-    });
-
-    // Explicitly try to restore session on mount.
-    // This is important on mobile browsers where onAuthStateChange
-    // may not reliably fire INITIAL_SESSION after tab restore/backgrounding.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && mounted) {
-        handleSession(session, "INITIAL_SESSION");
+      if (event === "SIGNED_OUT") {
+        settled = false;
+        await handleSession(null);
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        // Update the session without re-fetching profile
+        setState((prev) => (prev.user ? { ...prev, session } : prev));
       }
     });
 
@@ -151,21 +191,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Safety timeout — if onAuthStateChange hasn't resolved in 5s, force loading off
-    const timeout = setTimeout(() => {
-      setState((prev) => {
-        if (prev.loading) {
-          console.warn("Auth initialization timed out — forcing loading off");
-          return { ...prev, loading: false };
-        }
-        return prev;
-      });
-    }, 5000);
-
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      clearTimeout(timeout);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
