@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       profile,
-      needsUsername: !!profile && profile.username.startsWith("user_"),
+      needsUsername: !profile || profile.username.startsWith("user_"),
     }));
   };
 
@@ -79,18 +79,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       if (session?.user) {
         try {
-          // Small delay on fresh sign-in for the DB trigger to create the profile
-          if (event === "SIGNED_IN" && initialized) {
-            await new Promise((r) => setTimeout(r, 500));
+          let profile: UserProfile | null = null;
+
+          if (event === "SIGNED_IN") {
+            // New sign-in: poll for the profile since the DB trigger
+            // that creates it may not have completed yet.
+            for (let attempt = 0; attempt < 10; attempt++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (!mounted) return;
+              profile = await fetchProfile(session.user.id);
+              if (profile) break;
+            }
+          } else {
+            profile = await fetchProfile(session.user.id);
           }
-          const profile = await fetchProfile(session.user.id);
+
           if (!mounted) return;
           setState({
             user: session.user,
             profile,
             session,
             loading: false,
-            needsUsername: !!profile && profile.username.startsWith("user_"),
+            needsUsername: !profile || profile.username.startsWith("user_"),
           });
         } catch (err) {
           console.error("Failed to fetch profile:", err);
