@@ -1,4 +1,4 @@
-import type { Puzzle, DictionaryEntry } from "../types";
+import type { Puzzle, DictionaryEntry, DailyWord } from "../types";
 
 export const PUZZLES: Puzzle[] = [
   {
@@ -198,3 +198,15 @@ export const MOCK_DICTIONARY: Record<string, DictionaryEntry[]> = {
     },
   ],
 };
+
+export const MOCK_DAILY_WORD: DailyWord = {
+  id: "daily-2026-02-27",
+  word: "FLARE",
+  definition: "A sudden brief burst of bright flame or light.",
+  scheduled_date: "2026-02-27",
+  wordLength: 5,
+};
+
+export function getDailyWord(): DailyWord {
+  return MOCK_DAILY_WORD;
+}

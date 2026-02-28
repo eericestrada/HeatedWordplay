@@ -2,6 +2,47 @@
  * Sharing utilities for puzzle links and the Web Share API.
  */
 
+import type { CompletedRow } from "../types";
+
+/**
+ * Build an emoji grid string from completed rows.
+ * 🟩 = correct, 🟦 = present, ⬛ = absent, ⬜ = empty
+ */
+export function buildEmojiGrid(rows: CompletedRow[]): string {
+  return (rows || [])
+    .map((row) =>
+      row.result
+        .map((cell) => {
+          if (!cell.letter) return "⬜";
+          if (cell.status === "correct") return "🟩";
+          if (cell.status === "present") return "🟦";
+          return "⬛";
+        })
+        .join(""),
+    )
+    .join("\n");
+}
+
+/**
+ * Share text via Web Share API or clipboard (no puzzle URL appended).
+ */
+export async function shareText(
+  text: string,
+): Promise<"shared" | "copied" | "failed"> {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Heated Wordplay", text });
+      return "shared";
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return "failed";
+      }
+    }
+  }
+  const ok = await copyToClipboard(text);
+  return ok ? "copied" : "failed";
+}
+
 /**
  * Build a shareable URL for a puzzle.
  */

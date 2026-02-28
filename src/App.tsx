@@ -12,8 +12,12 @@ import PeopleScreen from "./components/PeopleScreen";
 import StatsScreen from "./components/StatsScreen";
 import ReviewScreen from "./components/ReviewScreen";
 import ActivityFeed from "./components/ActivityFeed";
+import DailyHeatCard from "./components/DailyHeatCard";
 import { saveAttemptGuesses, getPairStreaks } from "./lib/api";
 import { supabase } from "./lib/supabase";
+import { getDailyWord } from "./data/mockData";
+import { buildEmojiGrid } from "./utils/sharing";
+import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak } from "./utils/dailyStorage";
 import type {
   Puzzle,
   Screen,
@@ -22,6 +26,9 @@ import type {
   CompletedRow,
   SubmitWordData,
   PairStreak,
+  GameMode,
+  DailyWord,
+  DailyHeatState,
 } from "./types";
 
 export default function App() {
@@ -39,6 +46,15 @@ export default function App() {
   const [completedPuzzles, setCompletedPuzzles] = useState<
     Record<string, CompletionStatus>
   >({});
+
+  // Game mode — tracks whether the current game is daily or friendly
+  const [gameMode, setGameMode] = useState<GameMode>("friendly");
+
+  // Daily Heat state
+  const dailyWord: DailyWord = getDailyWord();
+  const [dailyState, setDailyState] = useState<DailyHeatState>(() =>
+    computeDailyHeatState(dailyWord.scheduled_date),
+  );
 
   // Supabase data
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
@@ -208,6 +224,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkPuzzleId, user, puzzlesLoading, puzzles, completedPuzzles]);
 
+  const handlePlayDaily = () => {
+    const dailyPuzzle: Puzzle = {
+      id: dailyWord.id,
+      word: dailyWord.word,
+      creator: "Daily Heat",
+      creator_id: undefined,
+      definition: dailyWord.definition,
+      clue: null,
+      context: null,
+      complexity: 0,
+      submittedAt: dailyWord.scheduled_date,
+      wordLength: dailyWord.wordLength,
+      hasClue: false,
+      hasAttempted: false,
+      isPublic: true,
+    };
+    setGameMode("daily");
+    setSelectedPuzzle(dailyPuzzle);
+    setResultData(null);
+    setScreen("play");
+    window.history.pushState({ screen: "play" }, "");
+  };
+
   const handleSelect = (p: Puzzle) => {
     setSelectedPuzzle(p);
     setResultData(null);
@@ -223,7 +262,21 @@ export default function App() {
     rows: CompletedRow[],
   ) => {
     setResultData({ totalGuesses, medal, usedClue, magnetsUsed, rows });
-    if (selectedPuzzle) {
+
+    if (gameMode === "daily") {
+      // Daily mode — save to localStorage, update streak
+      const solved = medal !== null;
+      const today = dailyWord.scheduled_date;
+      saveDailyAttempt({ date: today, solved, guesses: totalGuesses, rows });
+      const streak = updateDailyStreak(today, solved);
+
+      if (solved) {
+        setDailyState({ status: "completed", guesses: totalGuesses, streak: streak.current, rows });
+      } else {
+        setDailyState({ status: "streak_broken" });
+      }
+    } else if (selectedPuzzle) {
+      // Friendly mode — existing logic
       const isOwn = selectedPuzzle.creator_id === user?.id;
       const status: CompletionStatus = isOwn ? "submitted" : (medal || "failed");
       setCompletedPuzzles((prev) => ({
@@ -263,6 +316,8 @@ export default function App() {
     setScreen("select");
     setSelectedPuzzle(null);
     setResultData(null);
+    setGameMode("friendly");
+    setDailyState(computeDailyHeatState(dailyWord.scheduled_date));
     fetchPuzzles(); // Refresh puzzle list
     fetchStreaks(); // Refresh streaks (may have changed after playing)
   };
@@ -513,11 +568,26 @@ export default function App() {
             </div>
           ) : (
             <>
+              {/* Daily Heat Card */}
+              <div style={{ padding: "0 20px 8px" }} className="max-w-[480px] mx-auto w-full">
+                <DailyHeatCard
+                  state={dailyState}
+                  onPlay={handlePlayDaily}
+                  shareText={dailyState.status === "completed"
+                    ? (() => {
+                        const g = buildEmojiGrid(dailyState.rows);
+                        return dailyState.guesses <= 6
+                          ? `Heated Wordplay \u00B7 Daily Heat\nGot in there in ${dailyState.guesses}/6 \uD83D\uDD25\n${g}\nEveryone's doing it. heatedwordplay.com`
+                          : `Heated Wordplay \u00B7 Daily Heat\nThis one got away.\n${g}\nEveryone's doing it. heatedwordplay.com`;
+                      })()
+                    : undefined}
+                />
+              </div>
               <PuzzleSelector
                 puzzles={puzzles}
                 completedPuzzles={completedPuzzles}
                 streaks={streaks}
-                onSelect={handleSelect}
+                onSelect={(p) => { setGameMode("friendly"); handleSelect(p); }}
                 onReview={(p) => {
                   setSelectedPuzzle(p);
                   setScreen("review");
@@ -535,7 +605,8 @@ export default function App() {
           puzzle={selectedPuzzle}
           onComplete={handleComplete}
           onBack={handleBack}
-          creatorStreak={selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0}
+          creatorStreak={gameMode === "daily" ? 0 : (selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0)}
+          gameMode={gameMode}
         />
       )}
       {screen === "result" && selectedPuzzle && resultData && (
@@ -547,8 +618,10 @@ export default function App() {
           magnetsUsed={resultData.magnetsUsed}
           rows={resultData.rows}
           onBack={handleBack}
-          creatorStreak={selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0}
+          creatorStreak={gameMode === "daily" ? 0 : (selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0)}
           groupId={selectedGroupId}
+          gameMode={gameMode}
+          dailyStreak={gameMode === "daily" && dailyState.status === "completed" ? dailyState.streak : 0}
         />
       )}
       {screen === "groups" && (

@@ -1,12 +1,12 @@
 import { useState } from "react";
-import type { Puzzle, CompletedRow, Medal } from "../types";
+import type { Puzzle, CompletedRow, Medal, GameMode } from "../types";
 import {
   getMedalEmoji,
   getMultiplier,
   getMedalLabel,
   formatDate,
 } from "../utils/scoring";
-import { shareResults, buildPuzzleUrl } from "../utils/sharing";
+import { buildEmojiGrid, shareText as shareTextUtil, shareResults, buildPuzzleUrl } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
 
 interface VictoryScreenProps {
@@ -19,6 +19,8 @@ interface VictoryScreenProps {
   onBack: () => void;
   creatorStreak?: number;
   groupId?: string | null;
+  gameMode?: GameMode;
+  dailyStreak?: number;
 }
 
 export default function VictoryScreen({
@@ -31,6 +33,8 @@ export default function VictoryScreen({
   onBack,
   creatorStreak = 0,
   groupId = null,
+  gameMode = "friendly",
+  dailyStreak = 0,
 }: VictoryScreenProps) {
   const multiplier = getMultiplier(medal);
   const cluePenalty = usedClue ? 0.5 : 1.0;
@@ -40,20 +44,9 @@ export default function VictoryScreen({
   const finalScore = Math.round(puzzle.complexity * multiplier * totalPenalty);
   const solved = medal !== null;
   const [copied, setCopied] = useState(false);
+  const isDaily = gameMode === "daily";
 
-  // Build emoji grid
-  const emojiGrid = (rows || [])
-    .map((row) =>
-      row.result
-        .map((cell) => {
-          if (!cell.letter) return "⬜";
-          if (cell.status === "correct") return "🟩";
-          if (cell.status === "present") return "🟦";
-          return "⬛";
-        })
-        .join(""),
-    )
-    .join("\n");
+  const emojiGrid = buildEmojiGrid(rows);
 
   const aids = [
     usedClue && "clue",
@@ -63,22 +56,56 @@ export default function VictoryScreen({
     .filter(Boolean)
     .join(" + ");
 
-  const shareText = [
-    `🔥 Heated Wordplay`,
-    `${puzzle.creator === "You" ? "My" : `${puzzle.creator}'s`} puzzle · ${puzzle.word.length} letters`,
-    ``,
-    emojiGrid,
-    ``,
-    solved
-      ? `${getMedalEmoji(medal)} ${getMedalLabel(medal)} · ${totalGuesses}/6${aids ? ` · ${aids}` : ""} · Score: ${finalScore}`
-      : `❌ ${totalGuesses}/6${aids ? ` · ${aids}` : ""}`,
-  ].join("\n");
+  // Build share text based on game mode
+  let shareText: string;
+  if (isDaily) {
+    if (solved) {
+      shareText = [
+        "Heated Wordplay \u00B7 Daily Heat",
+        `Got in there in ${totalGuesses}/6 🔥`,
+        emojiGrid,
+        "Everyone's doing it. heatedwordplay.com",
+      ].join("\n");
+    } else {
+      shareText = [
+        "Heated Wordplay \u00B7 Daily Heat",
+        "This one got away.",
+        emojiGrid,
+        "Everyone's doing it. heatedwordplay.com",
+      ].join("\n");
+    }
+  } else {
+    const creator = puzzle.creator;
+    if (solved) {
+      shareText = [
+        "Heated Wordplay \u00B7 Friendly match",
+        `Nailed @${creator}'s word in ${totalGuesses}/6`,
+        emojiGrid,
+        "heatedwordplay.com",
+      ].join("\n");
+    } else {
+      shareText = [
+        "Heated Wordplay \u00B7 Friendly match",
+        `@${creator}'s word got me.`,
+        emojiGrid,
+        "heatedwordplay.com",
+      ].join("\n");
+    }
+  }
 
   const handleShare = async () => {
-    const result = await shareResults(shareText, puzzle.id as string);
-    if (result === "copied" || result === "shared") {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    if (isDaily) {
+      const result = await shareTextUtil(shareText);
+      if (result === "copied" || result === "shared") {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } else {
+      const result = await shareResults(shareText, puzzle.id as string);
+      if (result === "copied" || result === "shared") {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 
@@ -110,7 +137,7 @@ export default function VictoryScreen({
       }}
     >
       <div style={{ fontSize: "64px", lineHeight: 1 }}>
-        {getMedalEmoji(medal)}
+        {isDaily ? (solved ? "🔥" : "❌") : getMedalEmoji(medal)}
       </div>
 
       <div className="text-center">
@@ -125,7 +152,9 @@ export default function VictoryScreen({
             marginBottom: "8px",
           }}
         >
-          {solved ? getMedalLabel(medal) : "Better luck next time"}
+          {isDaily
+            ? (solved ? "Daily Heat" : "Daily Heat")
+            : (solved ? getMedalLabel(medal) : "Better luck next time")}
         </div>
         <div
           className="font-display"
@@ -138,16 +167,18 @@ export default function VictoryScreen({
         >
           {puzzle.word}
         </div>
-        <div
-          className="font-mono"
-          style={{
-            fontSize: "11px",
-            color: "rgba(255,255,255,0.25)",
-            marginTop: "6px",
-          }}
-        >
-          Submitted {formatDate(puzzle.submittedAt)}
-        </div>
+        {!isDaily && (
+          <div
+            className="font-mono"
+            style={{
+              fontSize: "11px",
+              color: "rgba(255,255,255,0.25)",
+              marginTop: "6px",
+            }}
+          >
+            Submitted {formatDate(puzzle.submittedAt)}
+          </div>
+        )}
       </div>
 
       {/* Definition */}
@@ -182,8 +213,8 @@ export default function VictoryScreen({
         </div>
       </div>
 
-      {/* Inspo */}
-      {puzzle.context && (
+      {/* Inspo — only for friendlies */}
+      {!isDaily && puzzle.context && (
         <div
           className="w-full rounded-xl"
           style={{
@@ -217,77 +248,100 @@ export default function VictoryScreen({
         </div>
       )}
 
-      {/* Score breakdown */}
-      <div
-        className="w-full grid gap-2.5"
-        style={{
-          gridTemplateColumns: `repeat(${scoreItems.length}, 1fr)`,
-        }}
-      >
-        {scoreItems.map((item, i) => (
-          <div
-            key={i}
-            className="rounded-[10px] text-center"
-            style={{
-              background: item.penalty
-                ? "rgba(255,100,100,0.08)"
-                : item.hl
-                  ? "rgba(255,180,60,0.12)"
-                  : "rgba(255,255,255,0.03)",
-              padding: "16px 10px",
-              border: item.penalty
-                ? "1px solid rgba(255,100,100,0.15)"
-                : item.hl
-                  ? "1px solid rgba(255,180,60,0.25)"
-                  : "1px solid rgba(255,255,255,0.05)",
-            }}
-          >
+      {/* Score breakdown — only for friendlies */}
+      {!isDaily && (
+        <div
+          className="w-full grid gap-2.5"
+          style={{
+            gridTemplateColumns: `repeat(${scoreItems.length}, 1fr)`,
+          }}
+        >
+          {scoreItems.map((item, i) => (
             <div
-              className="font-body uppercase tracking-[0.1em]"
+              key={i}
+              className="rounded-[10px] text-center"
               style={{
-                fontSize: "10px",
-                fontWeight: 600,
-                color: item.penalty
-                  ? "rgba(255,100,100,0.7)"
+                background: item.penalty
+                  ? "rgba(255,100,100,0.08)"
                   : item.hl
-                    ? "rgba(255,180,60,0.8)"
-                    : "rgba(255,255,255,0.35)",
-                marginBottom: "6px",
+                    ? "rgba(255,180,60,0.12)"
+                    : "rgba(255,255,255,0.03)",
+                padding: "16px 10px",
+                border: item.penalty
+                  ? "1px solid rgba(255,100,100,0.15)"
+                  : item.hl
+                    ? "1px solid rgba(255,180,60,0.25)"
+                    : "1px solid rgba(255,255,255,0.05)",
               }}
             >
-              {item.label}
+              <div
+                className="font-body uppercase tracking-[0.1em]"
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  color: item.penalty
+                    ? "rgba(255,100,100,0.7)"
+                    : item.hl
+                      ? "rgba(255,180,60,0.8)"
+                      : "rgba(255,255,255,0.35)",
+                  marginBottom: "6px",
+                }}
+              >
+                {item.label}
+              </div>
+              <div
+                className="font-mono"
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  color: item.penalty
+                    ? "rgba(255,100,100,0.8)"
+                    : item.hl
+                      ? "rgba(255,180,60,0.95)"
+                      : "#f5f0e8",
+                }}
+              >
+                {item.value}
+              </div>
             </div>
-            <div
-              className="font-mono"
-              style={{
-                fontSize: "22px",
-                fontWeight: 700,
-                color: item.penalty
-                  ? "rgba(255,100,100,0.8)"
-                  : item.hl
-                    ? "rgba(255,180,60,0.95)"
-                    : "#f5f0e8",
-              }}
-            >
-              {item.value}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Guess summary */}
       <div
         className="font-body"
         style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)" }}
       >
-        {solved
-          ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
-          : `Used all ${totalGuesses} guesses`}
-        {aids && ` · ${aids}`}
+        {isDaily
+          ? (solved
+              ? `Got in there in ${totalGuesses}`
+              : "This one got away.")
+          : (solved
+              ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
+              : `Used all ${totalGuesses} guesses`)}
+        {!isDaily && aids && ` · ${aids}`}
       </div>
 
-      {/* Streak callout */}
-      {creatorStreak > 0 && puzzle.creator !== "You" && (
+      {/* Daily streak callout */}
+      {isDaily && dailyStreak > 0 && (
+        <div
+          className="w-full rounded-xl flex items-center justify-center gap-2"
+          style={{
+            background: "rgba(255,140,40,0.06)",
+            border: "1px solid rgba(255,140,40,0.15)",
+            padding: "14px 20px",
+          }}
+        >
+          <span style={{ fontSize: "20px" }}>🔥</span>
+          <div className="font-body" style={{ fontSize: "14px", color: "rgba(255,140,40,0.9)" }}>
+            <strong>{dailyStreak}-day streak</strong>
+          </div>
+        </div>
+      )}
+
+      {/* Pair streak callout — only for friendlies */}
+      {!isDaily && creatorStreak > 0 && puzzle.creator !== "You" && (
         <div
           className="w-full rounded-xl flex items-center justify-center gap-2"
           style={{
@@ -307,8 +361,10 @@ export default function VictoryScreen({
         </div>
       )}
 
-      {/* Per-puzzle group stats */}
-      <PuzzleStatsPanel puzzleId={puzzle.id as string} groupId={groupId} />
+      {/* Per-puzzle group stats — only for friendlies */}
+      {!isDaily && (
+        <PuzzleStatsPanel puzzleId={puzzle.id as string} groupId={groupId} />
+      )}
 
       {/* Share preview */}
       <div
@@ -329,16 +385,18 @@ export default function VictoryScreen({
         >
           {shareText}
         </div>
-        <div
-          className="font-mono"
-          style={{
-            fontSize: "11px",
-            color: "rgba(100,160,255,0.6)",
-            marginTop: "8px",
-          }}
-        >
-          {buildPuzzleUrl(puzzle.id as string)}
-        </div>
+        {!isDaily && (
+          <div
+            className="font-mono"
+            style={{
+              fontSize: "11px",
+              color: "rgba(100,160,255,0.6)",
+              marginTop: "8px",
+            }}
+          >
+            {buildPuzzleUrl(puzzle.id as string)}
+          </div>
+        )}
       </div>
 
       {/* Action buttons */}

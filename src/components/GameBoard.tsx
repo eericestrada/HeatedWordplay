@@ -12,6 +12,7 @@ import type {
   ResultCell,
   LetterStates,
   Medal,
+  GameMode,
 } from "../types";
 
 const MAX_GUESSES = 6;
@@ -74,6 +75,7 @@ interface GameBoardProps {
   ) => void;
   onBack: () => void;
   creatorStreak?: number;
+  gameMode?: GameMode;
 }
 
 export default function GameBoard({
@@ -81,6 +83,7 @@ export default function GameBoard({
   onComplete,
   onBack,
   creatorStreak = 0,
+  gameMode = "friendly",
 }: GameBoardProps) {
   const { user } = useAuth();
   const wordLength = puzzle.wordLength || puzzle.word.length;
@@ -114,9 +117,10 @@ export default function GameBoard({
   const [evalError, setEvalError] = useState("");
 
   // Server-side evaluation for real puzzles from other users.
-  // Own puzzles and mock/local puzzles use client-side evaluation.
+  // Own puzzles, daily mock puzzles, and mock/local puzzles use client-side evaluation.
   const isOwnPuzzle = !!user && puzzle.creator_id === user.id;
-  const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
+  const isDaily = gameMode === "daily";
+  const useServerEval = !isDaily && typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
 
   // Persist game state to localStorage whenever key state changes
   useEffect(() => {
@@ -636,8 +640,8 @@ export default function GameBoard({
           className="font-body flex items-center gap-1.5"
           style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}
         >
-          {puzzle.creator === "You" ? "Your" : `${puzzle.creator}'s`} puzzle
-          {creatorStreak > 0 && puzzle.creator !== "You" && (
+          {isDaily ? "Daily Heat" : (puzzle.creator === "You" ? "Your" : `${puzzle.creator}'s`) + " puzzle"}
+          {!isDaily && creatorStreak > 0 && puzzle.creator !== "You" && (
             <span
               className="font-mono"
               style={{
@@ -884,6 +888,7 @@ export default function GameBoard({
           onMagnetSelect={useMagnet}
           magnetsUsed={magnetsUsed}
           canMagnet={
+            !isDaily &&
             !gameOver &&
             magnetsUsed < 2 &&
             presentLetters.length > 0 &&
