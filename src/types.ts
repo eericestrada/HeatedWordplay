@@ -1,3 +1,18 @@
+export type GameMode = "daily" | "friendly";
+
+export interface DailyWord {
+  id: string;
+  word: string;
+  definition: string;
+  scheduled_date: string;
+  wordLength: number;
+}
+
+export type DailyHeatState =
+  | { status: "unplayed"; streak: number }
+  | { status: "completed"; guesses: number; streak: number; rows: CompletedRow[] }
+  | { status: "streak_broken" };
+
 export interface Puzzle {
   id: string | number;
   word: string;
@@ -12,6 +27,7 @@ export interface Puzzle {
   hasClue?: boolean;
   hasAttempted?: boolean;
   isPublic?: boolean;
+  shareType?: "user" | "group" | "public";
 }
 
 export interface GridCell {

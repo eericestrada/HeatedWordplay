@@ -150,7 +150,7 @@ export default function PuzzleSelector({
         className="font-display text-center"
         style={{ fontSize: "28px", fontWeight: 700, color: "#f5f0e8" }}
       >
-        Choose a Puzzle
+        Friendlies
       </div>
       <div
         className="font-body text-center"
@@ -197,8 +197,8 @@ export default function PuzzleSelector({
             }}
           >
             {hideCompleted || hideOwn
-              ? "All puzzles hidden by filters. Adjust the toggles above, or submit a new word."
-              : "No puzzles available yet. Submit a word to create your first puzzle!"}
+              ? "All puzzles hidden by filters. Adjust the toggles above."
+              : "You've handled everything they've given you. Make the next move."}
           </div>
         )}
         {visiblePuzzles.map((p) => {
@@ -244,6 +244,11 @@ export default function PuzzleSelector({
                     marginBottom: "4px",
                   }}
                 >
+                  {!isOwn && (
+                    <span style={{ fontSize: "12px", opacity: 0.35 }}>
+                      {p.isPublic ? "🌐" : "👤"}
+                    </span>
+                  )}
                   {p.creator === "You" ? "You" : p.creator}
                   {isFinished && (
                     <span style={{ fontSize: "16px" }}>
@@ -380,7 +385,7 @@ export default function PuzzleSelector({
             letterSpacing: "0.02em",
           }}
         >
-          + Submit a word
+          + Send a Word
         </button>
       </div>
     </div>

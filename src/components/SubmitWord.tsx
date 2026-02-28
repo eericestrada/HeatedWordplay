@@ -143,7 +143,7 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
           className="font-display text-center"
           style={{ fontSize: "24px", fontWeight: 700, color: "#f5f0e8" }}
         >
-          Submit a Word
+          Send a Word
         </div>
         <div
           className="font-body text-center"
