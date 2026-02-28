@@ -7,12 +7,14 @@ import {
 } from "react";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import type { AppRole } from "../types";
 
 interface UserProfile {
   id: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+  role: AppRole;
 }
 
 interface AuthState {
@@ -30,6 +32,8 @@ interface AuthContextValue extends AuthState {
   signOut: () => Promise<void>;
   setUsername: (username: string) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
+  isWordMaster: boolean;
+  isEditor: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -237,6 +241,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
+  const isWordMaster = !!state.profile && (state.profile.role === "wordmaster" || state.profile.role === "editor");
+  const isEditor = !!state.profile && state.profile.role === "editor";
+
   return (
     <AuthContext.Provider
       value={{
@@ -247,6 +254,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         setUsername,
         refreshProfile,
+        isWordMaster,
+        isEditor,
       }}
     >
       {children}

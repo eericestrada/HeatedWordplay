@@ -6,9 +6,11 @@ interface DailyHeatCardProps {
   state: DailyHeatState;
   onPlay: () => void;
   shareText?: string;
+  loading?: boolean;
+  noWordToday?: boolean;
 }
 
-export default function DailyHeatCard({ state, onPlay, shareText }: DailyHeatCardProps) {
+export default function DailyHeatCard({ state, onPlay, shareText, loading, noWordToday }: DailyHeatCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
@@ -44,8 +46,36 @@ export default function DailyHeatCard({ state, onPlay, shareText }: DailyHeatCar
         </span>
       </div>
 
+      {/* Loading state */}
+      {loading && (
+        <div
+          className="font-body"
+          style={{
+            fontSize: "14px",
+            color: "rgba(255,255,255,0.3)",
+            lineHeight: 1.5,
+          }}
+        >
+          Loading...
+        </div>
+      )}
+
+      {/* No word scheduled today */}
+      {!loading && noWordToday && (
+        <div
+          className="font-body"
+          style={{
+            fontSize: "14px",
+            color: "rgba(255,255,255,0.4)",
+            lineHeight: 1.5,
+          }}
+        >
+          No daily word today. Check back tomorrow.
+        </div>
+      )}
+
       {/* State 1 & 2: Unplayed */}
-      {state.status === "unplayed" && (
+      {!loading && !noWordToday && state.status === "unplayed" && (
         <>
           <div
             className="font-body"
@@ -91,7 +121,7 @@ export default function DailyHeatCard({ state, onPlay, shareText }: DailyHeatCar
       )}
 
       {/* State 3: Completed */}
-      {state.status === "completed" && (
+      {!loading && !noWordToday && state.status === "completed" && (
         <>
           <div
             className="font-body"
@@ -152,7 +182,7 @@ export default function DailyHeatCard({ state, onPlay, shareText }: DailyHeatCar
       )}
 
       {/* State 4: Streak broken */}
-      {state.status === "streak_broken" && (
+      {!loading && !noWordToday && state.status === "streak_broken" && (
         <>
           <div
             className="font-body"

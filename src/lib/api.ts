@@ -6,6 +6,9 @@ import type {
   LeaderboardEntry,
   PlayerStats,
   CreatorStats,
+  DailyWordMeta,
+  DailyPoolWord,
+  DailyPoolAnonymous,
 } from "../types";
 
 /**
@@ -290,6 +293,7 @@ export async function evaluateGuess(params: {
   used_clue: boolean;
   magnets_used: number;
   guess_number: number;
+  is_daily?: boolean;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return invokeWithRetry<any>("evaluate-guess", {
@@ -298,5 +302,144 @@ export async function evaluateGuess(params: {
     used_clue: params.used_clue,
     magnets_used: params.magnets_used,
     guess_number: params.guess_number,
+    is_daily: params.is_daily || false,
   });
+}
+
+// ============================================================
+// Daily Words API
+// ============================================================
+
+/**
+ * Submit a word to the Daily Heat pool (WordMaster/Editor only).
+ */
+export async function submitDailyWord(params: {
+  word: string;
+  definition: string;
+  part_of_speech: string;
+}) {
+  return invokeWithRetry<{ id: string; word: string; status: string; created_at: string }>(
+    "submit-daily-word",
+    params as unknown as Record<string, unknown>,
+  );
+}
+
+/**
+ * Fetch today's scheduled daily word metadata (definition visible, word hidden).
+ * Uses the secure view so the actual word is not exposed.
+ */
+export async function fetchTodaysDailyWord(): Promise<DailyWordMeta | null> {
+  const today = new Date().toISOString().split("T")[0];
+  const { data, error } = await supabase
+    .from("daily_words_calendar")
+    .select("id, scheduled_date, word_length, definition")
+    .eq("scheduled_date", today)
+    .in("status", ["scheduled", "used"])
+    .single();
+
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    scheduled_date: data.scheduled_date,
+    wordLength: data.word_length,
+    definition: data.definition,
+  };
+}
+
+/**
+ * Fetch the current user's own daily word submissions (full details).
+ * RLS scopes to own rows for WordMasters.
+ */
+export async function fetchMyDailyWords(): Promise<DailyPoolWord[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("daily_words")
+    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at")
+    .eq("submitted_by", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to fetch own daily words:", error);
+    return [];
+  }
+  return (data || []) as DailyPoolWord[];
+}
+
+/**
+ * Fetch anonymous pool entries visible to WordMasters.
+ * Uses the secure view — word/definition are hidden for others' entries.
+ */
+export async function fetchPoolAnonymous(): Promise<DailyPoolAnonymous[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("daily_words_calendar")
+    .select("id, word_length, status, submitted_by, submitted_by_username, submitted_by_display_name, created_at")
+    .neq("submitted_by", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to fetch pool anonymous:", error);
+    return [];
+  }
+  return (data || []) as DailyPoolAnonymous[];
+}
+
+/**
+ * Update own pending/scheduled daily word.
+ */
+export async function updateDailyWord(
+  id: string,
+  updates: { word?: string; definition?: string; part_of_speech?: string },
+) {
+  const { error } = await supabase
+    .from("daily_words")
+    .update(updates)
+    .eq("id", id);
+  if (error) throw new Error(error.message || "Failed to update word");
+}
+
+/**
+ * Fetch ALL daily words (Editor-only — RLS gives editors full access).
+ */
+export async function fetchAllDailyWords(): Promise<DailyPoolWord[]> {
+  const { data, error } = await supabase
+    .from("daily_words")
+    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to fetch all daily words:", error);
+    return [];
+  }
+  return (data || []) as DailyPoolWord[];
+}
+
+/**
+ * Schedule a daily word to a specific date (Editor-only).
+ */
+export async function scheduleDailyWord(id: string, date: string) {
+  const { error } = await supabase
+    .from("daily_words")
+    .update({ scheduled_date: date, status: "scheduled" })
+    .eq("id", id);
+  if (error) throw new Error(error.message || "Failed to schedule word");
+}
+
+/**
+ * Remove a daily word from the schedule (Editor-only).
+ */
+export async function unscheduleDailyWord(id: string) {
+  const { error } = await supabase
+    .from("daily_words")
+    .update({ scheduled_date: null, status: "pending" })
+    .eq("id", id);
+  if (error) throw new Error(error.message || "Failed to unschedule word");
 }
