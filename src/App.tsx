@@ -13,9 +13,10 @@ import StatsScreen from "./components/StatsScreen";
 import ReviewScreen from "./components/ReviewScreen";
 import ActivityFeed from "./components/ActivityFeed";
 import DailyHeatCard from "./components/DailyHeatCard";
-import { saveAttemptGuesses, getPairStreaks } from "./lib/api";
+import WordMasterScreen from "./components/WordMasterScreen";
+import EditorScheduleScreen from "./components/EditorScheduleScreen";
+import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord } from "./lib/api";
 import { supabase } from "./lib/supabase";
-import { getDailyWord } from "./data/mockData";
 import { buildEmojiGrid } from "./utils/sharing";
 import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak } from "./utils/dailyStorage";
 import type {
@@ -27,12 +28,12 @@ import type {
   SubmitWordData,
   PairStreak,
   GameMode,
-  DailyWord,
   DailyHeatState,
+  DailyWordMeta,
 } from "./types";
 
 export default function App() {
-  const { user, profile, loading, needsUsername, signOut } = useAuth();
+  const { user, profile, loading, needsUsername, signOut, isWordMaster, isEditor } = useAuth();
 
   const [screen, setScreen] = useState<Screen>("select");
   const [selectedPuzzle, setSelectedPuzzle] = useState<Puzzle | null>(null);
@@ -50,11 +51,10 @@ export default function App() {
   // Game mode — tracks whether the current game is daily or friendly
   const [gameMode, setGameMode] = useState<GameMode>("friendly");
 
-  // Daily Heat state
-  const dailyWord: DailyWord = getDailyWord();
-  const [dailyState, setDailyState] = useState<DailyHeatState>(() =>
-    computeDailyHeatState(dailyWord.scheduled_date),
-  );
+  // Daily Heat state — async fetch from Supabase
+  const [dailyWordMeta, setDailyWordMeta] = useState<DailyWordMeta | null>(null);
+  const [dailyWordLoading, setDailyWordLoading] = useState(true);
+  const [dailyState, setDailyState] = useState<DailyHeatState>({ status: "unplayed", streak: 0 });
 
   // Supabase data
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
@@ -149,13 +149,30 @@ export default function App() {
     setPuzzlesLoading(false);
   }, [user]);
 
+  // Fetch daily word from Supabase
+  const refreshDailyWord = useCallback(async () => {
+    setDailyWordLoading(true);
+    try {
+      const meta = await fetchTodaysDailyWord();
+      setDailyWordMeta(meta);
+      if (meta) {
+        setDailyState(computeDailyHeatState(meta.scheduled_date));
+      }
+    } catch (err) {
+      console.error("Failed to fetch daily word:", err);
+    } finally {
+      setDailyWordLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (user) {
       fetchPuzzles();
       fetchGroups();
       fetchStreaks();
+      refreshDailyWord();
     }
-  }, [user, fetchPuzzles, fetchGroups, fetchStreaks]);
+  }, [user, fetchPuzzles, fetchGroups, fetchStreaks, refreshDailyWord]);
 
   // Handle hardware/browser back button — navigate to select screen
   useEffect(() => {
@@ -225,17 +242,18 @@ export default function App() {
   }, [deepLinkPuzzleId, user, puzzlesLoading, puzzles, completedPuzzles]);
 
   const handlePlayDaily = () => {
+    if (!dailyWordMeta) return;
     const dailyPuzzle: Puzzle = {
-      id: dailyWord.id,
-      word: dailyWord.word,
+      id: dailyWordMeta.id,
+      word: "?".repeat(dailyWordMeta.wordLength), // Hidden until server reveals
       creator: "Daily Heat",
       creator_id: undefined,
-      definition: dailyWord.definition,
+      definition: dailyWordMeta.definition,
       clue: null,
       context: null,
       complexity: 0,
-      submittedAt: dailyWord.scheduled_date,
-      wordLength: dailyWord.wordLength,
+      submittedAt: dailyWordMeta.scheduled_date,
+      wordLength: dailyWordMeta.wordLength,
       hasClue: false,
       hasAttempted: false,
       isPublic: true,
@@ -260,13 +278,24 @@ export default function App() {
     usedClue: boolean,
     magnetsUsed: number,
     rows: CompletedRow[],
+    revealedWord?: string,
+    revealedDefinition?: string,
   ) => {
     setResultData({ totalGuesses, medal, usedClue, magnetsUsed, rows });
 
     if (gameMode === "daily") {
+      // Update the selected puzzle with the revealed word/definition from server
+      if (revealedWord && selectedPuzzle) {
+        setSelectedPuzzle({
+          ...selectedPuzzle,
+          word: revealedWord,
+          definition: revealedDefinition || selectedPuzzle.definition,
+        });
+      }
+
       // Daily mode — save to localStorage, update streak
       const solved = medal !== null;
-      const today = dailyWord.scheduled_date;
+      const today = dailyWordMeta?.scheduled_date || new Date().toISOString().split("T")[0];
       saveDailyAttempt({ date: today, solved, guesses: totalGuesses, rows });
       const streak = updateDailyStreak(today, solved);
 
@@ -317,7 +346,9 @@ export default function App() {
     setSelectedPuzzle(null);
     setResultData(null);
     setGameMode("friendly");
-    setDailyState(computeDailyHeatState(dailyWord.scheduled_date));
+    if (dailyWordMeta) {
+      setDailyState(computeDailyHeatState(dailyWordMeta.scheduled_date));
+    }
     fetchPuzzles(); // Refresh puzzle list
     fetchStreaks(); // Refresh streaks (may have changed after playing)
   };
@@ -535,6 +566,36 @@ export default function App() {
             >
               👥 Groups
             </button>
+            {isWordMaster && (
+              <button
+                onClick={() => { setScreen("wordmaster"); window.history.pushState({ screen: "wordmaster" }, ""); }}
+                className="font-body"
+                style={{
+                  fontSize: "11px",
+                  color: "rgba(255,140,40,0.5)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                🔥 Pool
+              </button>
+            )}
+            {isEditor && (
+              <button
+                onClick={() => { setScreen("editor-schedule"); window.history.pushState({ screen: "editor-schedule" }, ""); }}
+                className="font-body"
+                style={{
+                  fontSize: "11px",
+                  color: "rgba(255,140,40,0.5)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                📅 Schedule
+              </button>
+            )}
             <button
               onClick={signOut}
               className="font-body"
@@ -573,6 +634,8 @@ export default function App() {
                 <DailyHeatCard
                   state={dailyState}
                   onPlay={handlePlayDaily}
+                  loading={dailyWordLoading}
+                  noWordToday={!dailyWordLoading && !dailyWordMeta}
                   shareText={dailyState.status === "completed"
                     ? (() => {
                         const g = buildEmojiGrid(dailyState.rows);
@@ -683,6 +746,12 @@ export default function App() {
             handleBack();
           }}
         />
+      )}
+      {screen === "wordmaster" && (
+        <WordMasterScreen onBack={handleBack} />
+      )}
+      {screen === "editor-schedule" && (
+        <EditorScheduleScreen onBack={handleBack} />
       )}
     </>,
     /* showTitle */ screen !== "play",

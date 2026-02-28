@@ -72,6 +72,8 @@ interface GameBoardProps {
     usedClue: boolean,
     magnetsUsed: number,
     rows: CompletedRow[],
+    revealedWord?: string,
+    revealedDefinition?: string,
   ) => void;
   onBack: () => void;
   creatorStreak?: number;
@@ -116,11 +118,11 @@ export default function GameBoard({
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState("");
 
-  // Server-side evaluation for real puzzles from other users.
-  // Own puzzles, daily mock puzzles, and mock/local puzzles use client-side evaluation.
+  // Server-side evaluation for real puzzles (including daily) from other users.
+  // Own puzzles and mock/local puzzles use client-side evaluation.
   const isOwnPuzzle = !!user && puzzle.creator_id === user.id;
   const isDaily = gameMode === "daily";
-  const useServerEval = !isDaily && typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
+  const useServerEval = typeof puzzle.id === "string" && puzzle.id.length > 10 && !isOwnPuzzle;
 
   // Persist game state to localStorage whenever key state changes
   useEffect(() => {
@@ -300,7 +302,14 @@ export default function GameBoard({
 
   // Process result from either server or client evaluation
   const processGuessResult = useCallback(
-    (rowResult: ResultCell[], solved: boolean, newTotal: number, newRows: CompletedRow[]) => {
+    (
+      rowResult: ResultCell[],
+      solved: boolean,
+      newTotal: number,
+      newRows: CompletedRow[],
+      revealedWord?: string,
+      revealedDefinition?: string,
+    ) => {
       setCompletedRows(newRows);
       setGrid(emptyGrid(wordLength));
 
@@ -344,6 +353,8 @@ export default function GameBoard({
             clueRevealed,
             magnetsUsed,
             newRows,
+            revealedWord,
+            revealedDefinition,
           );
         }, revealDuration + 400);
       }
@@ -396,6 +407,7 @@ export default function GameBoard({
             used_clue: clueRevealed,
             magnets_used: magnetsUsed,
             guess_number: newTotal,
+            is_daily: isDaily,
           });
 
           // Convert server result to our ResultCell format
@@ -411,7 +423,14 @@ export default function GameBoard({
           const newRows = [...completedRows, { result: rowResult }];
 
           setEvaluating(false);
-          processGuessResult(rowResult, solved, newTotal, newRows);
+          processGuessResult(
+            rowResult,
+            solved,
+            newTotal,
+            newRows,
+            response.game_over ? response.word : undefined,
+            response.game_over ? response.definition : undefined,
+          );
         } catch (err) {
           setEvaluating(false);
           const msg = err instanceof Error ? err.message : "Evaluation failed";
@@ -439,6 +458,7 @@ export default function GameBoard({
     [
       totalCount,
       useServerEval,
+      isDaily,
       puzzle.id,
       puzzle.word,
       clueRevealed,

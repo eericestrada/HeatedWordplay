@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { puzzle_id, guess_cells, used_clue, magnets_used, guess_number } =
+    const { puzzle_id, guess_cells, used_clue, magnets_used, guess_number, is_daily } =
       await req.json();
 
     if (!puzzle_id || !guess_cells) {
@@ -138,111 +138,148 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch the puzzle (server-side, bypasses RLS with service_role)
-    const { data: puzzle, error: puzzleError } = await supabaseAdmin
-      .from("puzzles")
-      .select("*")
-      .eq("id", puzzle_id)
-      .single();
+    // ---- Fetch the answer word (from daily_words or puzzles) ----
+    let answerWord: string;
+    let answerDefinition: string;
+    let answerClue: string | null = null;
+    let answerInspo: string | null = null;
+    let creatorId: string | null = null;
+    let puzzleComplexity = 0;
 
-    if (puzzleError || !puzzle) {
-      return new Response(JSON.stringify({ error: "Puzzle not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      });
-    }
+    if (is_daily) {
+      // Daily Heat: fetch from daily_words table
+      const { data: dailyWord, error: dwError } = await supabaseAdmin
+        .from("daily_words")
+        .select("word, definition, submitted_by")
+        .eq("id", puzzle_id)
+        .single();
 
-    // Check if user already has an attempt (completed game)
-    const { data: existingAttempt } = await supabaseAdmin
-      .from("attempts")
-      .select("id")
-      .eq("puzzle_id", puzzle_id)
-      .eq("user_id", user.id)
-      .single();
+      if (dwError || !dailyWord) {
+        return new Response(JSON.stringify({ error: "Daily word not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      answerWord = dailyWord.word;
+      answerDefinition = dailyWord.definition;
+      // Daily puzzles have no clue, inspo, or scoring
+    } else {
+      // Friendly: fetch from puzzles table
+      const { data: puzzle, error: puzzleError } = await supabaseAdmin
+        .from("puzzles")
+        .select("*")
+        .eq("id", puzzle_id)
+        .single();
 
-    if (existingAttempt) {
-      return new Response(
-        JSON.stringify({ error: "Already completed this puzzle" }),
-        { status: 409, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
-      );
+      if (puzzleError || !puzzle) {
+        return new Response(JSON.stringify({ error: "Puzzle not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      // Check if user already has an attempt (completed game)
+      const { data: existingAttempt } = await supabaseAdmin
+        .from("attempts")
+        .select("id")
+        .eq("puzzle_id", puzzle_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (existingAttempt) {
+        return new Response(
+          JSON.stringify({ error: "Already completed this puzzle" }),
+          { status: 409, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
+        );
+      }
+
+      answerWord = puzzle.word;
+      answerDefinition = puzzle.definition;
+      answerClue = puzzle.clue;
+      answerInspo = puzzle.inspo;
+      creatorId = puzzle.creator_id;
+      puzzleComplexity = puzzle.complexity;
     }
 
     // Evaluate the guess
-    const result = evaluateCells(guess_cells, puzzle.word);
+    const result = evaluateCells(guess_cells, answerWord);
     const guessWord = guess_cells
       .sort((a: GuessCell, b: GuessCell) => a.position - b.position)
       .map((c: GuessCell) => c.letter)
       .join("");
-    const isFull = guess_cells.length === puzzle.word.length;
-    const solved = isFull && guessWord === puzzle.word;
-
-    // We need to track guess history server-side
-    // For now, count from the request (client sends guess number)
-    // In production, we'd track in-progress games in a separate table
-    // For MVP, the client sends total_guesses so far
-    const totalGuesses = (guess_cells as GuessCell[]).length > 0 ? 1 : 0;
-
-    // Determine if game is over
-    // Note: In a full implementation, we'd track all guesses server-side.
-    // For Phase B, we trust the client's guess count and validate the final state.
-    // The Edge Function's primary job is to NEVER reveal the answer.
+    const isFull = guess_cells.length === answerWord.length;
+    const solved = isFull && guessWord === answerWord;
 
     const responseData: Record<string, unknown> = {
       result,
       solved,
     };
 
-    // If game is over (solved or max guesses), create the attempt record
     const guessNum = guess_number ? parseInt(String(guess_number)) : 0;
     if (solved || guessNum >= MAX_GUESSES) {
       const guessNumber = guessNum || MAX_GUESSES;
-      const isOwnPuzzle = puzzle.creator_id === user.id;
-      const medal = getMedal(guessNumber, solved);
-      const multiplier = getMultiplier(medal);
-      const cluePenalty = used_clue ? 0.5 : 1.0;
-      const magnetPenalty =
-        magnets_used === 0 ? 1 : magnets_used === 1 ? 0.75 : 0.25;
-      const score = isOwnPuzzle
-        ? 0
-        : Math.round(puzzle.complexity * multiplier * cluePenalty * magnetPenalty);
-
-      const { data: attempt, error: attemptError } = await supabaseAdmin
-        .from("attempts")
-        .insert({
-          puzzle_id,
-          user_id: user.id,
-          total_guesses: guessNumber,
-          medal: isOwnPuzzle ? null : medal,
-          score,
-          used_clue: !!used_clue,
-          magnets_used: magnets_used || 0,
-          is_own_puzzle: isOwnPuzzle,
-        })
-        .select()
-        .single();
-
-      if (attemptError) {
-        console.error("Failed to create attempt:", attemptError);
-      }
-
       responseData.game_over = true;
-      responseData.medal = isOwnPuzzle ? null : medal;
-      responseData.score = score;
-      responseData.is_own_puzzle = isOwnPuzzle;
-      responseData.attempt = attempt;
 
-      // On game over, reveal the answer
-      responseData.word = puzzle.word;
-      responseData.definition = puzzle.definition;
-      responseData.clue = puzzle.clue;
-      responseData.inspo = puzzle.inspo;
+      if (is_daily) {
+        // Daily mode: no attempt record, no scoring. Just reveal the answer.
+        responseData.word = answerWord;
+        responseData.definition = answerDefinition;
+
+        // Mark the daily word as used (idempotent)
+        await supabaseAdmin
+          .from("daily_words")
+          .update({ status: "used" })
+          .eq("id", puzzle_id)
+          .eq("status", "scheduled");
+      } else {
+        // Friendly mode: create attempt record with scoring
+        const isOwnPuzzle = creatorId === user.id;
+        const medal = getMedal(guessNumber, solved);
+        const multiplier = getMultiplier(medal);
+        const cluePenalty = used_clue ? 0.5 : 1.0;
+        const magnetPenalty =
+          magnets_used === 0 ? 1 : magnets_used === 1 ? 0.75 : 0.25;
+        const score = isOwnPuzzle
+          ? 0
+          : Math.round(puzzleComplexity * multiplier * cluePenalty * magnetPenalty);
+
+        const { data: attempt, error: attemptError } = await supabaseAdmin
+          .from("attempts")
+          .insert({
+            puzzle_id,
+            user_id: user.id,
+            total_guesses: guessNumber,
+            medal: isOwnPuzzle ? null : medal,
+            score,
+            used_clue: !!used_clue,
+            magnets_used: magnets_used || 0,
+            is_own_puzzle: isOwnPuzzle,
+          })
+          .select()
+          .single();
+
+        if (attemptError) {
+          console.error("Failed to create attempt:", attemptError);
+        }
+
+        responseData.medal = isOwnPuzzle ? null : medal;
+        responseData.score = score;
+        responseData.is_own_puzzle = isOwnPuzzle;
+        responseData.attempt = attempt;
+
+        // Reveal the answer
+        responseData.word = answerWord;
+        responseData.definition = answerDefinition;
+        responseData.clue = answerClue;
+        responseData.inspo = answerInspo;
+      }
     } else {
       responseData.game_over = false;
     }
 
     // If puzzle has a clue and user requested it, send just the clue text
-    if (used_clue && puzzle.clue) {
-      responseData.clue_text = puzzle.clue;
+    if (!is_daily && used_clue && answerClue) {
+      responseData.clue_text = answerClue;
     }
 
     return new Response(JSON.stringify(responseData), {

@@ -1,11 +1,50 @@
 export type GameMode = "daily" | "friendly";
 
+export type AppRole = "player" | "wordmaster" | "editor";
+
+export type DailyWordStatus = "pending" | "scheduled" | "used" | "skipped";
+
 export interface DailyWord {
   id: string;
   word: string;
   definition: string;
   scheduled_date: string;
   wordLength: number;
+}
+
+/** What the client receives before solving — word is hidden */
+export interface DailyWordMeta {
+  id: string;
+  scheduled_date: string;
+  wordLength: number;
+  definition: string;
+}
+
+/** Full word row visible to submitter or editor */
+export interface DailyPoolWord {
+  id: string;
+  word: string;
+  definition: string;
+  part_of_speech: string;
+  status: DailyWordStatus;
+  scheduled_date: string | null;
+  created_at: string;
+}
+
+/** Anonymous entry visible to other WordMasters — no word/definition */
+export interface DailyPoolAnonymous {
+  id: string;
+  word_length: number;
+  status: DailyWordStatus;
+  submitted_by_username: string;
+  submitted_by_display_name: string | null;
+  created_at: string;
+}
+
+/** Editor schedule slot */
+export interface ScheduleSlot {
+  date: string;
+  word: DailyPoolWord | null;
 }
 
 export type DailyHeatState =
@@ -78,7 +117,7 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "wordmaster" | "editor-schedule";
 
 export interface ConnectedUser {
   user_id: string;
