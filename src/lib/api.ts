@@ -29,7 +29,21 @@ async function invokeWithRetry<T = unknown>(
       if (response?.status === 401) {
         throw { isAuthError: true };
       }
-      throw new Error(error.message || `Failed to call ${functionName}`);
+      // Try to extract the specific error message from the response body.
+      // Supabase JS wraps non-2xx responses in a FunctionsHttpError whose
+      // .message is generic ("Edge Function returned a non-2xx status code").
+      // The real error message is in the response JSON body.
+      let detail: string | undefined;
+      if (response) {
+        try {
+          const respBody = await response.json();
+          detail = respBody?.error;
+        } catch {
+          // response body wasn't JSON or was already consumed — ignore
+        }
+      }
+      console.error(`[${functionName}] status=${response?.status} detail=${detail} message=${error.message}`);
+      throw new Error(detail || error.message || `Failed to call ${functionName}`);
     }
     if (data?.error) throw new Error(data.error);
     return data as T;

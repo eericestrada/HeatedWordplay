@@ -790,11 +790,7 @@ export default function GameBoard({
             className="font-body text-center"
             style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)" }}
           >
-            Reveal clue?{" "}
-            <strong style={{ color: "rgba(255,180,60,0.9)" }}>
-              You'll lose 50% of your points
-            </strong>{" "}
-            for this word.
+            Reveal clue?
           </div>
           <div className="flex gap-2">
             <button
@@ -802,7 +798,6 @@ export default function GameBoard({
                 setClueRevealed(true);
                 setShowClueConfirm(false);
                 setShowClueDialog(true);
-                showMsg("Clue revealed — 50% penalty applied");
               }}
               className="font-body"
               style={{
