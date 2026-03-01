@@ -236,12 +236,12 @@ Deno.serve(async (req: Request) => {
         const isOwnPuzzle = creatorId === user.id;
         const medal = getMedal(guessNumber, solved);
         const multiplier = getMultiplier(medal);
-        const cluePenalty = used_clue ? 0.5 : 1.0;
+        // Clues are free — no penalty for using them.
         const magnetPenalty =
           magnets_used === 0 ? 1 : magnets_used === 1 ? 0.75 : 0.25;
         const score = isOwnPuzzle
           ? 0
-          : Math.round(puzzleComplexity * multiplier * cluePenalty * magnetPenalty);
+          : Math.round(puzzleComplexity * multiplier * magnetPenalty);
 
         const { data: attempt, error: attemptError } = await supabaseAdmin
           .from("attempts")

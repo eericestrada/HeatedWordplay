@@ -37,11 +37,10 @@ export default function VictoryScreen({
   dailyStreak = 0,
 }: VictoryScreenProps) {
   const multiplier = getMultiplier(medal);
-  const cluePenalty = usedClue ? 0.5 : 1.0;
+  // Clues are free — no penalty.
   const magnetPenalty =
     magnetsUsed === 0 ? 1 : magnetsUsed === 1 ? 0.75 : 0.25;
-  const totalPenalty = cluePenalty * magnetPenalty;
-  const finalScore = Math.round(puzzle.complexity * multiplier * totalPenalty);
+  const finalScore = Math.round(puzzle.complexity * multiplier * magnetPenalty);
   const solved = medal !== null;
   const [copied, setCopied] = useState(false);
   const isDaily = gameMode === "daily";
@@ -49,7 +48,6 @@ export default function VictoryScreen({
   const emojiGrid = buildEmojiGrid(rows);
 
   const aids = [
-    usedClue && "clue",
     magnetsUsed > 0 &&
       `${magnetsUsed} magnet${magnetsUsed > 1 ? "s" : ""}`,
   ]
@@ -112,9 +110,6 @@ export default function VictoryScreen({
   const scoreItems = [
     { label: "Complexity", value: String(puzzle.complexity), hl: false, penalty: false },
     { label: "Multiplier", value: `${multiplier}×`, hl: false, penalty: false },
-    ...(usedClue
-      ? [{ label: "Clue", value: "-50%", hl: false, penalty: true }]
-      : []),
     ...(magnetsUsed > 0
       ? [
           {
