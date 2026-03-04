@@ -27,7 +27,7 @@ export default function VictoryScreen({
   puzzle,
   totalGuesses,
   medal,
-  usedClue,
+  usedClue: _usedClue,
   magnetsUsed,
   rows,
   onBack,
