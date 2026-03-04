@@ -343,7 +343,7 @@ export async function submitDailyWord(params: {
  * Uses the secure view so the actual word is not exposed.
  */
 export async function fetchTodaysDailyWord(): Promise<DailyWordMeta | null> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString("en-CA");
   const { data, error } = await supabase
     .from("daily_words_calendar")
     .select("id, scheduled_date, word_length, definition")

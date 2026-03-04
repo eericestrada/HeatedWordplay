@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { getMedalEmoji } from "../utils/scoring";
+import type { CompletionStatus } from "../types";
 
 interface FeedItem {
   id: string;
+  puzzle_id: string;
   player_username: string;
   player_display_name: string | null;
   creator_username: string;
@@ -17,6 +19,8 @@ interface FeedItem {
 
 interface ActivityFeedProps {
   groupId: string | null;
+  completedPuzzles?: Record<string | number, CompletionStatus>;
+  onItemClick?: (puzzleId: string, isCompleted: boolean) => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -36,7 +40,7 @@ function timeAgo(dateStr: string): string {
   });
 }
 
-export default function ActivityFeed({ groupId }: ActivityFeedProps) {
+export default function ActivityFeed({ groupId, completedPuzzles = {}, onItemClick }: ActivityFeedProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -86,14 +90,19 @@ export default function ActivityFeed({ groupId }: ActivityFeedProps) {
       {items.slice(0, 8).map((item) => {
         const playerName = item.player_display_name || item.player_username;
         const creatorName = item.creator_display_name || item.creator_username;
+        const isCompleted = !!item.puzzle_id && !!completedPuzzles[item.puzzle_id] && completedPuzzles[item.puzzle_id] !== "submitted";
+        const isClickable = !!item.puzzle_id && !!onItemClick;
         return (
-          <div
+          <button
             key={item.id}
-            className="flex items-center justify-between rounded-lg"
+            onClick={isClickable ? () => onItemClick(item.puzzle_id, isCompleted) : undefined}
+            className="flex items-center justify-between rounded-lg text-left w-full"
             style={{
               background: "rgba(255,255,255,0.02)",
               padding: "10px 14px",
               border: "1px solid rgba(255,255,255,0.04)",
+              cursor: isClickable ? "pointer" : "default",
+              transition: "all 0.15s ease",
             }}
           >
             <div className="flex-1 min-w-0">
@@ -125,8 +134,13 @@ export default function ActivityFeed({ groupId }: ActivityFeedProps) {
               >
                 {timeAgo(item.completed_at)}
               </span>
+              {isClickable && (
+                <span style={{ color: "rgba(255,255,255,0.15)", fontSize: "16px" }}>
+                  ›
+                </span>
+              )}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

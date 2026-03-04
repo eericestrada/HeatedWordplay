@@ -170,6 +170,7 @@ export interface LeaderboardEntry {
   bronze_count: number;
   avg_guesses: number | null;
   best_score: number;
+  creator_engagement: number;
 }
 
 export interface PlayerStats {
@@ -184,6 +185,7 @@ export interface PlayerStats {
   avg_guesses: number | null;
   puzzles_created: number;
   puzzles_played_by_others: number;
+  creator_engagement_score: number;
   current_solve_streak: number;
 }
 

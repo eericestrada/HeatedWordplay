@@ -70,7 +70,6 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
     .join("\n");
 
   const shareText = [
-    "\ud83d\udd25 Heated Wordplay",
     `${puzzle.creator === "You" ? "My" : `${puzzle.creator}'s`} puzzle \u00b7 ${wordLength} letters`,
     "",
     emojiGrid,

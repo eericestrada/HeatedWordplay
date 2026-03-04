@@ -17,13 +17,13 @@ export interface StoredDailyStreak {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toLocaleDateString("en-CA");
 }
 
 function yesterdayStr(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
+  return d.toLocaleDateString("en-CA");
 }
 
 export function getDailyAttempt(date: string): StoredDailyAttempt | null {

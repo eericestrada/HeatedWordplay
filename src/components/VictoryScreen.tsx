@@ -59,34 +59,28 @@ export default function VictoryScreen({
   if (isDaily) {
     if (solved) {
       shareText = [
-        "Heated Wordplay \u00B7 Daily Heat",
-        `Got in there in ${totalGuesses}/6 🔥`,
+        `🔥 Daily Heat`,
+        `Got in there in ${totalGuesses}/6`,
         emojiGrid,
-        "Everyone's doing it. heatedwordplay.com",
       ].join("\n");
     } else {
       shareText = [
-        "Heated Wordplay \u00B7 Daily Heat",
+        `🔥 Daily Heat`,
         "This one got away.",
         emojiGrid,
-        "Everyone's doing it. heatedwordplay.com",
       ].join("\n");
     }
   } else {
     const creator = puzzle.creator;
     if (solved) {
       shareText = [
-        "Heated Wordplay \u00B7 Friendly match",
         `Nailed @${creator}'s word in ${totalGuesses}/6`,
         emojiGrid,
-        "heatedwordplay.com",
       ].join("\n");
     } else {
       shareText = [
-        "Heated Wordplay \u00B7 Friendly match",
         `@${creator}'s word got me.`,
         emojiGrid,
-        "heatedwordplay.com",
       ].join("\n");
     }
   }

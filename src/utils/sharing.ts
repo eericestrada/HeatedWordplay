@@ -94,7 +94,7 @@ export async function sharePuzzleLink(
   wordLength: number,
 ): Promise<"shared" | "copied" | "failed"> {
   const url = buildPuzzleUrl(puzzleId);
-  const text = `🔥 Can you solve my ${wordLength}-letter word puzzle?`;
+  const text = `Can you solve my ${wordLength}-letter word puzzle? 🔥`;
   const title = "Heated Wordplay";
 
   // Try Web Share API (supported on mobile browsers)

@@ -168,6 +168,14 @@ export default function StatsScreen({ onBack }: StatsScreenProps) {
                 {playerStats.puzzles_played_by_others}
               </div>
             </div>
+            <div className="flex items-center justify-between" style={{ marginTop: "6px" }}>
+              <div className="font-body" style={{ fontSize: "13px", color: "rgba(255,180,60,0.6)" }}>
+                Creator score
+              </div>
+              <div className="font-mono" style={{ fontSize: "15px", fontWeight: 600, color: "rgba(255,180,60,0.9)" }}>
+                +{playerStats.creator_engagement_score || 0}
+              </div>
+            </div>
           </div>
         </>
       ) : tab === "words" && creatorStats ? (

@@ -159,6 +159,25 @@ export default function PuzzleSelector({
         Select a word to guess. Trust your instincts.
       </div>
 
+      {/* Send a Word — above the puzzle list */}
+      <button
+        onClick={onSubmitWord}
+        className="font-body w-full rounded-[10px]"
+        style={{
+          fontSize: "15px",
+          fontWeight: 600,
+          padding: "14px 24px",
+          border: "1px dashed rgba(255,180,60,0.25)",
+          background: "rgba(255,180,60,0.04)",
+          color: "rgba(255,180,60,0.7)",
+          cursor: "pointer",
+          transition: "all 0.15s ease",
+          letterSpacing: "0.02em",
+        }}
+      >
+        + Send a Word
+      </button>
+
       {/* Filter toggles */}
       <div className="flex items-center gap-4 flex-wrap justify-center">
         <Toggle
@@ -337,13 +356,18 @@ export default function PuzzleSelector({
                 </div>
                 {isFinished ? (
                   <div
-                    className="font-body"
+                    className="font-mono rounded-md"
                     style={{
-                      color: "rgba(255,255,255,0.2)",
+                      color: "rgba(255,180,60,0.6)",
+                      background: "rgba(255,180,60,0.06)",
                       fontSize: "10px",
+                      fontWeight: 600,
+                      padding: "3px 8px",
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
                     }}
                   >
-                    review
+                    View results
                   </div>
                 ) : (
                   <div
@@ -361,33 +385,7 @@ export default function PuzzleSelector({
         })}
       </div>
 
-      {/* Submit button */}
-      <div
-        className="w-full"
-        style={{
-          borderTop: "1px solid rgba(255,255,255,0.06)",
-          paddingTop: "20px",
-          marginTop: "4px",
-        }}
-      >
-        <button
-          onClick={onSubmitWord}
-          className="font-body w-full rounded-[10px]"
-          style={{
-            fontSize: "15px",
-            fontWeight: 600,
-            padding: "14px 24px",
-            border: "1px dashed rgba(255,180,60,0.25)",
-            background: "rgba(255,180,60,0.04)",
-            color: "rgba(255,180,60,0.7)",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-            letterSpacing: "0.02em",
-          }}
-        >
-          + Send a Word
-        </button>
-      </div>
+
     </div>
   );
 }

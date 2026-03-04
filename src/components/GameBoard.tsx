@@ -108,8 +108,9 @@ export default function GameBoard({
   const [clueRevealed, setClueRevealed] = useState(
     () => saved?.clueRevealed || false,
   );
-  const [showClueConfirm, setShowClueConfirm] = useState(false);
   const [showClueDialog, setShowClueDialog] = useState(false);
+  const [showShortGuessConfirm, setShowShortGuessConfirm] = useState(false);
+  const pendingShortGuess = useRef<GridCell[] | null>(null);
   const [magnetsUsed, setMagnetsUsed] = useState(
     () => saved?.magnetsUsed || 0,
   );
@@ -365,12 +366,19 @@ export default function GameBoard({
 
   // Submit guess (async for server evaluation)
   const submitGuess = useCallback(
-    async (currentGrid: GridCell[]) => {
+    async (currentGrid: GridCell[], skipShortConfirm = false) => {
       const filledCells = currentGrid.filter((c) => c.letter);
       if (filledCells.length < 2) {
         setShake(true);
         showMsg("Enter at least 2 letters");
         setTimeout(() => setShake(false), 400);
+        return;
+      }
+
+      // Confirm before submitting a guess shorter than the puzzle length
+      if (!skipShortConfirm && filledCells.length < wordLength) {
+        pendingShortGuess.current = currentGrid.map((c) => ({ ...c }));
+        setShowShortGuessConfirm(true);
         return;
       }
 
@@ -775,8 +783,8 @@ export default function GameBoard({
         </div>
       )}
 
-      {/* Clue confirm dialog */}
-      {!gameOver && showClueConfirm && (
+      {/* Short guess confirm dialog */}
+      {!gameOver && showShortGuessConfirm && (
         <div
           className="flex flex-col items-center gap-2 w-full my-1"
           style={{
@@ -790,14 +798,20 @@ export default function GameBoard({
             className="font-body text-center"
             style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)" }}
           >
-            Reveal clue?
+            Your guess is only{" "}
+            <strong style={{ color: "rgba(255,180,60,0.9)" }}>
+              {grid.filter((c) => c.letter).length} letters
+            </strong>{" "}
+            (puzzle is {wordLength}). Submit anyway?
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => {
-                setClueRevealed(true);
-                setShowClueConfirm(false);
-                setShowClueDialog(true);
+                setShowShortGuessConfirm(false);
+                if (pendingShortGuess.current) {
+                  submitGuess(pendingShortGuess.current, true);
+                  pendingShortGuess.current = null;
+                }
               }}
               className="font-body"
               style={{
@@ -811,10 +825,13 @@ export default function GameBoard({
                 cursor: "pointer",
               }}
             >
-              Reveal
+              Submit
             </button>
             <button
-              onClick={() => setShowClueConfirm(false)}
+              onClick={() => {
+                setShowShortGuessConfirm(false);
+                pendingShortGuess.current = null;
+              }}
               className="font-body"
               style={{
                 fontSize: "12px",
@@ -827,7 +844,7 @@ export default function GameBoard({
                 cursor: "pointer",
               }}
             >
-              No thanks
+              Cancel
             </button>
           </div>
         </div>
@@ -911,13 +928,16 @@ export default function GameBoard({
           }
           onMagnetRequest={() => setShowMagnetConfirm(true)}
           onMagnetCancel={() => setMagnetMode(false)}
-          hasClue={!!puzzle.clue}
+          hasClue={!!puzzle.hasClue || !!puzzle.clue}
           clueRevealed={clueRevealed}
-          onClueRequest={() =>
-            clueRevealed
-              ? setShowClueDialog((p) => !p)
-              : setShowClueConfirm(true)
-          }
+          onClueRequest={() => {
+            if (clueRevealed) {
+              setShowClueDialog((p) => !p);
+            } else {
+              setClueRevealed(true);
+              setShowClueDialog(true);
+            }
+          }}
         />
       </div>
 

@@ -640,8 +640,8 @@ export default function App() {
                     ? (() => {
                         const g = buildEmojiGrid(dailyState.rows);
                         return dailyState.guesses <= 6
-                          ? `Heated Wordplay \u00B7 Daily Heat\nGot in there in ${dailyState.guesses}/6 \uD83D\uDD25\n${g}\nEveryone's doing it. heatedwordplay.com`
-                          : `Heated Wordplay \u00B7 Daily Heat\nThis one got away.\n${g}\nEveryone's doing it. heatedwordplay.com`;
+                          ? `\uD83D\uDD25 Daily Heat\nGot in there in ${dailyState.guesses}/6\n${g}`
+                          : `\uD83D\uDD25 Daily Heat\nThis one got away.\n${g}`;
                       })()
                     : undefined}
                 />
@@ -658,7 +658,23 @@ export default function App() {
                 }}
                 onSubmitWord={() => { setScreen("submit"); window.history.pushState({ screen: "submit" }, ""); }}
               />
-              <ActivityFeed groupId={selectedGroupId} />
+              <ActivityFeed
+                groupId={selectedGroupId}
+                completedPuzzles={completedPuzzles}
+                onItemClick={(puzzleId, isCompleted) => {
+                  const puzzle = puzzles.find((p) => p.id === puzzleId);
+                  if (puzzle) {
+                    if (isCompleted) {
+                      setSelectedPuzzle(puzzle);
+                      setScreen("review");
+                      window.history.pushState({ screen: "review" }, "");
+                    } else {
+                      setGameMode("friendly");
+                      handleSelect(puzzle);
+                    }
+                  }
+                }}
+              />
             </>
           )}
         </>
