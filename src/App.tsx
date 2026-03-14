@@ -249,12 +249,12 @@ export default function App() {
       creator: "Daily Heat",
       creator_id: undefined,
       definition: dailyWordMeta.definition,
-      clue: dailyWordMeta.definition, // Use the definition as a clue hint
+      clue: null,
       context: null,
       complexity: 0,
       submittedAt: dailyWordMeta.scheduled_date,
       wordLength: dailyWordMeta.wordLength,
-      hasClue: true,
+      hasClue: false,
       hasAttempted: false,
       isPublic: true,
     };
