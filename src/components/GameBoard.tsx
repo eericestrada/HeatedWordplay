@@ -176,10 +176,13 @@ export default function GameBoard({
   const filledCount = grid.filter((c) => c.letter).length;
   const hasPins = grid.some((c) => c.pinned);
   const isShort = filledCount > 0 && filledCount < wordLength;
-  // Letters eligible for magnet: present OR correct, with at least one unhinted position
+  // Letters eligible for magnet: present OR correct, with at least one unhinted position.
+  // For server-eval puzzles the answer is hidden, so we can't check positions client-side —
+  // just allow any present/correct letter (the server will reject if already placed).
   const magnetEligibleLetters = Object.entries(letterStates)
     .filter(([ch, s]) => {
       if (s !== "present" && s !== "correct") return false;
+      if (useServerEval) return true;
       const answerLetters = puzzle.word.split("");
       for (let i = 0; i < wordLength; i++) {
         if (answerLetters[i] === ch && !hintedCells[i]) return true;
