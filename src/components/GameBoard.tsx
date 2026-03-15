@@ -29,6 +29,7 @@ interface SavedGameState {
   letterStates: LetterStates;
   clueRevealed: boolean;
   magnetsUsed: number;
+  hintedCells?: Record<number, string>;
   savedAt: number;
 }
 
@@ -116,6 +117,9 @@ export default function GameBoard({
   );
   const [magnetMode, setMagnetMode] = useState(false);
   const [showMagnetConfirm, setShowMagnetConfirm] = useState(false);
+  const [hintedCells, setHintedCells] = useState<Record<number, string>>(
+    () => saved?.hintedCells || {},
+  );
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState("");
 
@@ -134,9 +138,10 @@ export default function GameBoard({
       letterStates,
       clueRevealed,
       magnetsUsed,
+      hintedCells,
       savedAt: Date.now(),
     });
-  }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, gameOver]);
+  }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, hintedCells, gameOver]);
 
   // Dynamic tile sizing — measure grid area and compute tile size to fill it
   const gridRef = useRef<HTMLDivElement>(null);
@@ -171,8 +176,16 @@ export default function GameBoard({
   const filledCount = grid.filter((c) => c.letter).length;
   const hasPins = grid.some((c) => c.pinned);
   const isShort = filledCount > 0 && filledCount < wordLength;
-  const presentLetters = Object.entries(letterStates)
-    .filter(([, s]) => s === "present")
+  // Letters eligible for magnet: present OR correct, with at least one unhinted position
+  const magnetEligibleLetters = Object.entries(letterStates)
+    .filter(([ch, s]) => {
+      if (s !== "present" && s !== "correct") return false;
+      const answerLetters = puzzle.word.split("");
+      for (let i = 0; i < wordLength; i++) {
+        if (answerLetters[i] === ch && !hintedCells[i]) return true;
+      }
+      return false;
+    })
     .map(([ch]) => ch);
 
   const showMsg = (msg: string) => {
@@ -234,14 +247,7 @@ export default function GameBoard({
         });
         setEvaluating(false);
         const tp = result.position;
-        setGrid((prev) => {
-          const next = prev.map((c) => ({ ...c }));
-          if (next[tp].letter && !next[tp].pinned) {
-            next[tp] = { letter: "", pinned: false };
-          }
-          next[tp] = { letter: ch, pinned: true };
-          return next;
-        });
+        setHintedCells((prev) => ({ ...prev, [tp]: ch }));
         setMagnetsUsed((prev) => prev + 1);
         setMagnetMode(false);
         showMsg(
@@ -253,7 +259,7 @@ export default function GameBoard({
         setEvaluating(false);
         const msg = err instanceof Error ? err.message : "Magnet failed";
         if (msg === "Already placed") {
-          showMsg("Already placed!");
+          showMsg("Already revealed!");
         } else if (msg.includes("Session expired")) {
           setEvalError("Session expired — signing in...");
         } else {
@@ -270,27 +276,18 @@ export default function GameBoard({
       }
       let targetPos: number | null = null;
       for (const pos of correctPositions) {
-        const cell = grid[pos];
-        if (!(cell.letter === ch && cell.pinned)) {
+        if (!hintedCells[pos]) {
           targetPos = pos;
           break;
         }
       }
       if (targetPos === null) {
-        showMsg("Already placed!");
+        showMsg("Already revealed!");
         setMagnetMode(false);
         return;
       }
 
-      const tp = targetPos;
-      setGrid((prev) => {
-        const next = prev.map((c) => ({ ...c }));
-        if (next[tp].letter && !next[tp].pinned) {
-          next[tp] = { letter: "", pinned: false };
-        }
-        next[tp] = { letter: ch, pinned: true };
-        return next;
-      });
+      setHintedCells((prev) => ({ ...prev, [targetPos!]: ch }));
       setMagnetsUsed((prev) => prev + 1);
       setMagnetMode(false);
       showMsg(
@@ -587,6 +584,7 @@ export default function GameBoard({
               isActive={hasContent ? !!cell.letter : i === 0}
               isRevealing={false}
               pinned={cell.pinned}
+              hintLetter={hintedCells[i]}
               size={tileSize || undefined}
               onClick={cell.letter ? () => togglePin(i) : undefined}
             />
@@ -923,9 +921,10 @@ export default function GameBoard({
             !isDaily &&
             !gameOver &&
             magnetsUsed < 2 &&
-            presentLetters.length > 0 &&
+            magnetEligibleLetters.length > 0 &&
             !showMagnetConfirm
           }
+          magnetEligible={magnetEligibleLetters}
           onMagnetRequest={() => setShowMagnetConfirm(true)}
           onMagnetCancel={() => setMagnetMode(false)}
           hasClue={!!puzzle.hasClue || !!puzzle.clue}

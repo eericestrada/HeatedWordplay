@@ -45,6 +45,7 @@ interface InputPanelProps {
   onMagnetSelect: (letter: string) => void;
   magnetsUsed: number;
   canMagnet: boolean;
+  magnetEligible?: string[];
   onMagnetRequest: () => void;
   onMagnetCancel: () => void;
   hasClue: boolean;
@@ -75,6 +76,7 @@ export default function InputPanel({
   onMagnetSelect,
   magnetsUsed,
   canMagnet,
+  magnetEligible,
   onMagnetRequest,
   onMagnetCancel,
   hasClue,
@@ -84,8 +86,9 @@ export default function InputPanel({
   const [view, setView] = useState<"qwerty" | "pool">("qwerty");
   const [poolOrder, setPoolOrder] = useState<string[] | null>(null);
 
+  const magnetEligibleSet = new Set(magnetEligible || []);
   const handleLetterClick = (ch: string) => {
-    if (magnetMode && letterStates[ch] === "present") {
+    if (magnetMode && magnetEligibleSet.has(ch)) {
       onMagnetSelect(ch);
     } else {
       onKey(ch);
@@ -113,7 +116,7 @@ export default function InputPanel({
   const renderPoolKey = (ch: string, isVowel: boolean) => {
     const state = letterStates[ch] || "unused";
     const c = POOL_COLORS[state] || POOL_COLORS.unused;
-    const isMagnetTarget = magnetMode && state === "present";
+    const isMagnetTarget = magnetMode && magnetEligibleSet.has(ch);
     return (
       <button
         key={ch}
@@ -180,7 +183,7 @@ export default function InputPanel({
               animation: "magnetPulse 1.5s ease infinite",
             }}
           >
-            🧲 Tap teal · Cancel
+            🧲 Tap a letter · Cancel
           </button>
         ) : canMagnet ? (
           <button
@@ -296,7 +299,7 @@ export default function InputPanel({
               {row.map((key) => {
                 const state = letterStates[key];
                 const c = KEY_COLORS[state] || KEY_COLORS.unused;
-                const isMagnetTarget = magnetMode && state === "present";
+                const isMagnetTarget = magnetMode && magnetEligibleSet.has(key);
                 return (
                   <button
                     key={key}

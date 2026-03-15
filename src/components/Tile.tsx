@@ -6,6 +6,7 @@ interface TileProps {
   isActive: boolean;
   isRevealing: boolean;
   pinned?: boolean;
+  hintLetter?: string;
   size?: number;
   onClick?: () => void;
 }
@@ -55,12 +56,18 @@ export default function Tile({
   isActive,
   isRevealing,
   pinned = false,
+  hintLetter,
   size,
   onClick,
 }: TileProps) {
   const state = resolveState(letter, status, isActive);
   const c = STATUS_STYLES[state];
-  const borderColor = pinned ? "rgba(255,180,60,0.9)" : c.border;
+  const showHint = hintLetter && !letter && !status;
+  const borderColor = pinned
+    ? "rgba(255,180,60,0.9)"
+    : showHint
+      ? "rgba(26,158,158,0.35)"
+      : c.border;
   const boxShadow = pinned
     ? "0 0 0 1px rgba(255,180,60,0.3), inset 0 0 8px rgba(255,180,60,0.08)"
     : "none";
@@ -88,14 +95,14 @@ export default function Tile({
         transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
         backgroundColor: c.bg,
         borderColor,
-        color: c.color,
+        color: showHint ? "rgba(26,158,158,0.3)" : c.color,
         boxShadow,
         position: "relative",
         transform,
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      {letter || ""}
+      {letter || (showHint ? hintLetter : "")}
       {pinned && (
         <div
           className="absolute flex items-center justify-center rounded-full"
@@ -110,6 +117,22 @@ export default function Tile({
           }}
         >
           📌
+        </div>
+      )}
+      {showHint && (
+        <div
+          className="absolute flex items-center justify-center rounded-full"
+          style={{
+            top: "-4px",
+            right: "-4px",
+            width: "12px",
+            height: "12px",
+            background: "rgba(26,158,158,0.5)",
+            fontSize: "7px",
+            lineHeight: 1,
+          }}
+        >
+          🧲
         </div>
       )}
     </div>
