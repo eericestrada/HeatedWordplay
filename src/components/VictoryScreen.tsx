@@ -6,7 +6,7 @@ import {
   getMedalLabel,
   formatDate,
 } from "../utils/scoring";
-import { buildEmojiGrid, shareText as shareTextUtil, shareResults, buildPuzzleUrl } from "../utils/sharing";
+import { buildEmojiGrid, buildEmojiGridWithGuesses, shareText as shareTextUtil, shareResults, buildPuzzleUrl } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
 
 interface VictoryScreenProps {
@@ -43,9 +43,12 @@ export default function VictoryScreen({
   const finalScore = Math.round(puzzle.complexity * multiplier * magnetPenalty);
   const solved = medal !== null;
   const [copied, setCopied] = useState(false);
+  const [showGuesses, setShowGuesses] = useState(false);
   const isDaily = gameMode === "daily";
 
-  const emojiGrid = buildEmojiGrid(rows);
+  const emojiGrid = showGuesses
+    ? buildEmojiGridWithGuesses(rows)
+    : buildEmojiGrid(rows);
 
   const aids = [
     magnetsUsed > 0 &&
@@ -54,7 +57,7 @@ export default function VictoryScreen({
     .filter(Boolean)
     .join(" + ");
 
-  // Build share text based on game mode
+  // Build share text based on game mode and guess visibility
   let shareText: string;
   if (isDaily) {
     if (solved) {
@@ -364,6 +367,56 @@ export default function VictoryScreen({
           border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
+        {/* Guess visibility toggle */}
+        <button
+          onClick={() => setShowGuesses(!showGuesses)}
+          className="flex items-center gap-2 mb-3"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "0",
+          }}
+        >
+          <div
+            className="relative rounded-[10px]"
+            style={{
+              width: "32px",
+              height: "18px",
+              background: showGuesses
+                ? "rgba(255,180,60,0.35)"
+                : "rgba(255,255,255,0.1)",
+              transition: "background 0.2s ease",
+            }}
+          >
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: "14px",
+                height: "14px",
+                background: showGuesses
+                  ? "rgba(255,180,60,0.9)"
+                  : "rgba(255,255,255,0.35)",
+                top: "2px",
+                left: showGuesses ? "16px" : "2px",
+                transition: "all 0.2s ease",
+              }}
+            />
+          </div>
+          <span
+            className="font-body"
+            style={{
+              fontSize: "12px",
+              color: showGuesses
+                ? "rgba(255,180,60,0.7)"
+                : "rgba(255,255,255,0.35)",
+              transition: "color 0.2s ease",
+            }}
+          >
+            Show guesses
+          </span>
+        </button>
+
         <div
           className="font-mono whitespace-pre-wrap"
           style={{

@@ -24,6 +24,28 @@ export function buildEmojiGrid(rows: CompletedRow[]): string {
 }
 
 /**
+ * Build an emoji grid with guesses visible.
+ * Each row shows the guessed word followed by the emoji pattern.
+ * e.g. "FLAME 🟩🟩🟩⬛🟩"
+ */
+export function buildEmojiGridWithGuesses(rows: CompletedRow[]): string {
+  return (rows || [])
+    .map((row) => {
+      const word = row.result.map((cell) => cell.letter || " ").join("");
+      const emojis = row.result
+        .map((cell) => {
+          if (!cell.letter) return "⬜";
+          if (cell.status === "correct") return "🟩";
+          if (cell.status === "present") return "🟦";
+          return "⬛";
+        })
+        .join("");
+      return `${word} ${emojis}`;
+    })
+    .join("\n");
+}
+
+/**
  * Share text via Web Share API or clipboard (no puzzle URL appended).
  */
 export async function shareText(

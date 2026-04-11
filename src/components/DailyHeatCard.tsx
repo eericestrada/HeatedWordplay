@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DailyHeatState } from "../types";
-import { buildEmojiGrid, copyToClipboard } from "../utils/sharing";
+import { buildEmojiGrid, buildEmojiGridWithGuesses, copyToClipboard } from "../utils/sharing";
 
 interface DailyHeatCardProps {
   state: DailyHeatState;
@@ -12,10 +12,21 @@ interface DailyHeatCardProps {
 
 export default function DailyHeatCard({ state, onPlay, shareText, loading, noWordToday }: DailyHeatCardProps) {
   const [copied, setCopied] = useState(false);
+  const [showGuesses, setShowGuesses] = useState(false);
+
+  // Build share text with guesses if toggled on
+  const effectiveShareText = (() => {
+    if (!showGuesses || !shareText) return shareText;
+    if (state.status !== "completed") return shareText;
+    const grid = buildEmojiGridWithGuesses(state.rows);
+    return state.guesses <= 6
+      ? `\uD83D\uDD25 Daily Heat\nGot in there in ${state.guesses}/6\n${grid}`
+      : `\uD83D\uDD25 Daily Heat\nThis one got away.\n${grid}`;
+  })();
 
   const handleShare = async () => {
-    if (!shareText) return;
-    const ok = await copyToClipboard(shareText);
+    if (!effectiveShareText) return;
+    const ok = await copyToClipboard(effectiveShareText);
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -150,12 +161,63 @@ export default function DailyHeatCard({ state, onPlay, shareText, loading, noWor
           <div
             className="font-mono whitespace-pre-wrap mb-4"
             style={{
-              fontSize: "14px",
+              fontSize: showGuesses ? "12px" : "14px",
               lineHeight: 1.4,
             }}
           >
-            {buildEmojiGrid(state.rows)}
+            {showGuesses
+              ? buildEmojiGridWithGuesses(state.rows)
+              : buildEmojiGrid(state.rows)}
           </div>
+          {/* Guess visibility toggle */}
+          <button
+            onClick={() => setShowGuesses(!showGuesses)}
+            className="flex items-center gap-2 mb-3"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "0",
+            }}
+          >
+            <div
+              className="relative rounded-[10px]"
+              style={{
+                width: "28px",
+                height: "16px",
+                background: showGuesses
+                  ? "rgba(255,140,40,0.35)"
+                  : "rgba(255,255,255,0.1)",
+                transition: "background 0.2s ease",
+              }}
+            >
+              <div
+                className="absolute rounded-full"
+                style={{
+                  width: "12px",
+                  height: "12px",
+                  background: showGuesses
+                    ? "rgba(255,140,40,0.9)"
+                    : "rgba(255,255,255,0.35)",
+                  top: "2px",
+                  left: showGuesses ? "14px" : "2px",
+                  transition: "all 0.2s ease",
+                }}
+              />
+            </div>
+            <span
+              className="font-body"
+              style={{
+                fontSize: "11px",
+                color: showGuesses
+                  ? "rgba(255,140,40,0.7)"
+                  : "rgba(255,255,255,0.3)",
+                transition: "color 0.2s ease",
+              }}
+            >
+              Show guesses
+            </span>
+          </button>
           <button
             onClick={handleShare}
             className="font-body w-full rounded-lg"

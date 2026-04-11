@@ -1,10 +1,6 @@
 import { useState } from "react";
 import type { Puzzle, CompletionStatus, PairStreak } from "../types";
-import {
-  getMedalEmoji,
-  getComplexityRange,
-  formatDate,
-} from "../utils/scoring";
+import { getMedalEmoji, formatDate } from "../utils/scoring";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PuzzleSelectorProps {
@@ -16,6 +12,43 @@ interface PuzzleSelectorProps {
   onSubmitWord: () => void;
 }
 
+// Warm palette tuned for dark backgrounds, inspired by Fizzy's color system
+const CREATOR_COLORS = [
+  "255,180,60",   // amber
+  "26,158,158",   // teal
+  "180,120,255",  // violet
+  "255,120,150",  // rose
+  "120,200,80",   // lime
+  "100,180,255",  // sky
+  "255,150,100",  // coral
+  "200,160,255",  // lavender
+  "255,210,80",   // gold
+];
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function getCreatorColor(creatorId: string): string {
+  return CREATOR_COLORS[hashString(creatorId) % CREATOR_COLORS.length];
+}
+
+const INITIAL_SHOW = 3;
+const SHOW_MORE_STEP = 5;
+
+interface CreatorGroup {
+  creatorId: string;
+  creatorName: string;
+  puzzles: Puzzle[];
+  isOwn: boolean;
+  color: string;
+  streak: number;
+}
+
 export default function PuzzleSelector({
   puzzles,
   completedPuzzles,
@@ -25,14 +58,8 @@ export default function PuzzleSelector({
   onSubmitWord,
 }: PuzzleSelectorProps) {
   const { user } = useAuth();
-  const [showComplexity, setShowComplexity] = useState(false);
-  const [hideCompleted, setHideCompleted] = useState(() => {
-    try {
-      return localStorage.getItem("hw-hide-completed") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showCount, setShowCount] = useState<Record<string, number>>({});
   const [hideOwn, setHideOwn] = useState(() => {
     try {
       return localStorage.getItem("hw-hide-own") === "true";
@@ -41,14 +68,68 @@ export default function PuzzleSelector({
     }
   });
 
-  const toggleHideCompleted = () => {
-    const next = !hideCompleted;
-    setHideCompleted(next);
-    try {
-      localStorage.setItem("hw-hide-completed", String(next));
-    } catch {
-      // Ignore storage errors
+  // Group puzzles by creator
+  const groupMap = new Map<string, CreatorGroup>();
+
+  for (const p of puzzles) {
+    const cid = p.creator_id || "unknown";
+    const isOwn = cid === user?.id;
+
+    // For others: only unsolved puzzles. For own: all submissions.
+    if (!isOwn) {
+      const status = completedPuzzles[p.id];
+      if (status && status !== "submitted") continue;
     }
+
+    let group = groupMap.get(cid);
+    if (!group) {
+      group = {
+        creatorId: cid,
+        creatorName: isOwn ? "You" : p.creator,
+        puzzles: [],
+        isOwn,
+        color: getCreatorColor(cid),
+        streak: !isOwn && p.creator_id ? streaks[p.creator_id]?.current_streak || 0 : 0,
+      };
+      groupMap.set(cid, group);
+    }
+    group.puzzles.push(p);
+  }
+
+  const groups: CreatorGroup[] = [];
+  groupMap.forEach((g) => groups.push(g));
+
+  // Sort others by puzzle count descending, own row at the end
+  groups.sort((a, b) => {
+    if (a.isOwn) return 1;
+    if (b.isOwn) return -1;
+    return b.puzzles.length - a.puzzles.length;
+  });
+
+  // Max unsolved count across other creators (for relative gradient scaling)
+  const maxCount = Math.max(
+    1,
+    ...groups.filter((g) => !g.isOwn).map((g) => g.puzzles.length),
+  );
+
+  const toggleExpand = (creatorId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(creatorId)) next.delete(creatorId);
+      else next.add(creatorId);
+      return next;
+    });
+  };
+
+  const getVisibleCount = (creatorId: string) =>
+    showCount[creatorId] || INITIAL_SHOW;
+
+  const showMore = (creatorId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowCount((prev) => ({
+      ...prev,
+      [creatorId]: (prev[creatorId] || INITIAL_SHOW) + SHOW_MORE_STEP,
+    }));
   };
 
   const toggleHideOwn = () => {
@@ -57,89 +138,15 @@ export default function PuzzleSelector({
     try {
       localStorage.setItem("hw-hide-own", String(next));
     } catch {
-      // Ignore storage errors
+      // ignore
     }
   };
 
-  // Count completed puzzles (excluding own "submitted" puzzles)
-  const completedCount = puzzles.filter((p) => {
-    const s = completedPuzzles[p.id];
-    return s && s !== "submitted";
-  }).length;
+  // Own group reference (may not exist if user has no submissions)
+  const ownGroup = groups.find((g) => g.isOwn);
 
-  // Count own puzzles
-  const ownCount = puzzles.filter((p) => p.creator_id === user?.id).length;
-
-  // Filter puzzles based on toggles
-  const visiblePuzzles = puzzles.filter((p) => {
-    const s = completedPuzzles[p.id];
-    if (hideCompleted && s && s !== "submitted") return false;
-    if (hideOwn && p.creator_id === user?.id) return false;
-    return true;
-  });
-
-  // Helper: mini toggle component
-  const Toggle = ({
-    active,
-    onClick,
-    label,
-    activeColor = "rgba(26,158,158,",
-  }: {
-    active: boolean;
-    onClick: () => void;
-    label: string;
-    activeColor?: string;
-  }) => (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-2"
-      style={{
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        padding: "4px 0",
-      }}
-    >
-      <div
-        className="relative rounded-[10px]"
-        style={{
-          width: "32px",
-          height: "18px",
-          background: active
-            ? `${activeColor}0.35)`
-            : "rgba(255,255,255,0.1)",
-          transition: "background 0.2s ease",
-        }}
-      >
-        <div
-          className="absolute rounded-full"
-          style={{
-            width: "14px",
-            height: "14px",
-            background: active
-              ? `${activeColor}0.9)`
-              : "rgba(255,255,255,0.35)",
-            top: "2px",
-            left: active ? "16px" : "2px",
-            transition: "all 0.2s ease",
-          }}
-        />
-      </div>
-      <span
-        className="font-body"
-        style={{
-          fontSize: "12px",
-          color: active
-            ? `${activeColor}0.7)`
-            : "rgba(255,255,255,0.35)",
-          transition: "color 0.2s ease",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </span>
-    </button>
-  );
+  // Visible groups: hide own if toggled
+  const visibleGroups = groups.filter((g) => !(g.isOwn && hideOwn));
 
   return (
     <div
@@ -159,7 +166,7 @@ export default function PuzzleSelector({
         Select a word to guess. Trust your instincts.
       </div>
 
-      {/* Send a Word — above the puzzle list */}
+      {/* Send a Word */}
       <button
         onClick={onSubmitWord}
         className="font-body w-full rounded-[10px]"
@@ -178,33 +185,9 @@ export default function PuzzleSelector({
         + Send a Word
       </button>
 
-      {/* Filter toggles */}
-      <div className="flex items-center gap-4 flex-wrap justify-center">
-        <Toggle
-          active={showComplexity}
-          onClick={() => setShowComplexity(!showComplexity)}
-          label="Complexity"
-          activeColor="rgba(255,180,60,"
-        />
-        {completedCount > 0 && (
-          <Toggle
-            active={hideCompleted}
-            onClick={toggleHideCompleted}
-            label={`Hide done (${completedCount})`}
-          />
-        )}
-        {ownCount > 0 && (
-          <Toggle
-            active={hideOwn}
-            onClick={toggleHideOwn}
-            label={`Hide mine (${ownCount})`}
-          />
-        )}
-      </div>
-
-      {/* Puzzle list */}
+      {/* Creator rows */}
       <div className="flex flex-col gap-2.5 w-full">
-        {visiblePuzzles.length === 0 && (
+        {visibleGroups.length === 0 && !hideOwn && (
           <div
             className="font-body text-center rounded-lg"
             style={{
@@ -215,177 +198,306 @@ export default function PuzzleSelector({
               border: "1px solid rgba(255,255,255,0.04)",
             }}
           >
-            {hideCompleted || hideOwn
-              ? "All puzzles hidden by filters. Adjust the toggles above."
-              : "You've handled everything they've given you. Make the next move."}
+            You've handled everything they've given you. Make the next move.
           </div>
         )}
-        {visiblePuzzles.map((p) => {
-          const completed = completedPuzzles[p.id];
-          const range = getComplexityRange(p.complexity);
-          const isFinished = completed && completed !== "submitted";
-          const isOwn = completed === "submitted";
-          const creatorStreak = p.creator_id ? streaks[p.creator_id]?.current_streak || 0 : 0;
 
-          const handleClick = () => {
-            if (isFinished && onReview) {
-              onReview(p);
-            } else if (!isFinished || isOwn) {
-              onSelect(p);
-            }
-          };
+        {visibleGroups.map((group) => {
+          const isExpanded = expanded.has(group.creatorId);
+          const limit = getVisibleCount(group.creatorId);
+          const visiblePuzzles = isExpanded
+            ? group.puzzles.slice(0, limit)
+            : [];
+          const hasMore = isExpanded && group.puzzles.length > limit;
+          const remaining = group.puzzles.length - limit;
+
+          // Gradient width: relative to max count
+          const fillPct = group.isOwn
+            ? Math.min(
+                100,
+                (group.puzzles.length /
+                  Math.max(maxCount, group.puzzles.length)) *
+                  100,
+              )
+            : (group.puzzles.length / maxCount) * 100;
 
           return (
-            <button
-              key={p.id}
-              onClick={handleClick}
-              className="flex items-center justify-between rounded-[10px] text-left"
+            <div
+              key={group.creatorId}
+              className="rounded-[10px] overflow-hidden"
               style={{
-                background: isFinished
-                  ? "rgba(255,255,255,0.01)"
-                  : "rgba(255,255,255,0.03)",
-                border: isFinished
-                  ? "1px solid rgba(255,255,255,0.04)"
-                  : "1px solid rgba(255,255,255,0.08)",
-                padding: "16px 20px",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                opacity: isFinished ? 0.6 : 1,
+                border: `1px solid rgba(${group.color},${isExpanded ? 0.2 : 0.12})`,
+                transition: "border-color 0.25s ease",
               }}
             >
-              <div>
+              {/* Row header with gradient */}
+              <button
+                onClick={() => toggleExpand(group.creatorId)}
+                className="w-full text-left relative"
+                style={{
+                  padding: "16px 20px",
+                  cursor: "pointer",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "none",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Fizzy-inspired gradient fill */}
                 <div
-                  className="font-body flex items-center gap-2"
+                  className="absolute inset-y-0 left-0 pointer-events-none"
                   style={{
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    color: "#f5f0e8",
-                    marginBottom: "4px",
+                    background: `linear-gradient(to right, rgba(${group.color},0.18) 0%, rgba(${group.color},0.06) 60%, transparent 100%)`,
+                    width: `${Math.max(fillPct, 12)}%`,
+                    transition: "width 0.5s ease",
                   }}
-                >
-                  {!isOwn && (
-                    <span style={{ fontSize: "12px", opacity: 0.35 }}>
-                      {p.isPublic ? "🌐" : "👤"}
-                    </span>
-                  )}
-                  {p.creator === "You" ? "You" : p.creator}
-                  {isFinished && (
-                    <span style={{ fontSize: "16px" }}>
-                      {getMedalEmoji(
-                        completed === "failed" ? null : completed,
-                      )}
-                    </span>
-                  )}
-                  {isOwn && !p.hasAttempted && (
+                />
+
+                {/* Content over gradient */}
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-2">
                     <span
-                      className="font-mono"
+                      className="font-body"
                       style={{
-                        fontSize: "10px",
-                        color: "rgba(26,158,158,0.7)",
-                        background: "rgba(26,158,158,0.1)",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      Test it
-                    </span>
-                  )}
-                  {isOwn && p.hasAttempted && (
-                    <span style={{ fontSize: "14px", color: "rgba(26,158,158,0.6)" }}>
-                      ✓
-                    </span>
-                  )}
-                  {creatorStreak > 0 && !isOwn && (
-                    <span
-                      className="font-mono"
-                      style={{
-                        fontSize: "10px",
-                        color: "rgba(255,140,40,0.85)",
-                        background: "rgba(255,140,40,0.1)",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
+                        fontSize: "15px",
                         fontWeight: 600,
+                        color: "#f5f0e8",
                       }}
                     >
-                      🔥 {creatorStreak}
+                      {group.creatorName}
                     </span>
+                    {group.streak > 0 && (
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: "10px",
+                          color: "rgba(255,140,40,0.85)",
+                          background: "rgba(255,140,40,0.1)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {"\uD83D\uDD25"} {group.streak}
+                      </span>
+                    )}
+                    {group.isOwn && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleHideOwn();
+                        }}
+                        className="font-mono"
+                        style={{
+                          fontSize: "10px",
+                          color: "rgba(255,255,255,0.25)",
+                          background: "rgba(255,255,255,0.05)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        hide
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: `rgba(${group.color},0.8)`,
+                      }}
+                    >
+                      {group.puzzles.length}
+                    </span>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.2)",
+                        fontSize: "18px",
+                        transform: isExpanded
+                          ? "rotate(90deg)"
+                          : "rotate(0deg)",
+                        transition: "transform 0.2s ease",
+                        display: "inline-block",
+                      }}
+                    >
+                      {"\u203A"}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Expanded puzzle list */}
+              {isExpanded && (
+                <div
+                  style={{
+                    borderTop: `1px solid rgba(${group.color},0.1)`,
+                    background: "rgba(0,0,0,0.15)",
+                  }}
+                >
+                  {visiblePuzzles.map((p) => {
+                    const status = completedPuzzles[p.id];
+                    const isFinished = status && status !== "submitted";
+                    const isOwnPuzzle = status === "submitted";
+
+                    const handleClick = () => {
+                      if (isFinished && onReview) {
+                        onReview(p);
+                      } else {
+                        onSelect(p);
+                      }
+                    };
+
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={handleClick}
+                        className="flex items-center justify-between w-full text-left"
+                        style={{
+                          padding: "12px 20px",
+                          cursor: "pointer",
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: `1px solid rgba(${group.color},0.05)`,
+                          transition: "background 0.15s ease",
+                          opacity: isFinished ? 0.6 : 1,
+                        }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {!group.isOwn && (
+                            <span style={{ fontSize: "12px", opacity: 0.35 }}>
+                              {p.isPublic ? "\uD83C\uDF10" : "\uD83D\uDC64"}
+                            </span>
+                          )}
+                          <span
+                            className="font-mono"
+                            style={{
+                              fontSize: "13px",
+                              color: `rgba(${group.color},0.7)`,
+                              letterSpacing: "0.06em",
+                            }}
+                          >
+                            {(isFinished || isOwnPuzzle) &&
+                            !p.word.startsWith("?")
+                              ? p.word.toUpperCase()
+                              : `${p.wordLength || p.word.length} letters`}
+                          </span>
+                          {isFinished && (
+                            <span style={{ fontSize: "14px" }}>
+                              {getMedalEmoji(
+                                status === "failed" ? null : status,
+                              )}
+                            </span>
+                          )}
+                          {isOwnPuzzle && !p.hasAttempted && (
+                            <span
+                              className="font-mono"
+                              style={{
+                                fontSize: "10px",
+                                color: "rgba(26,158,158,0.7)",
+                                background: "rgba(26,158,158,0.1)",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              Test it
+                            </span>
+                          )}
+                          {isOwnPuzzle && p.hasAttempted && (
+                            <span
+                              style={{
+                                fontSize: "14px",
+                                color: "rgba(26,158,158,0.6)",
+                              }}
+                            >
+                              {"\u2713"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span
+                            className="font-mono"
+                            style={{
+                              fontSize: "11px",
+                              color: "rgba(255,255,255,0.25)",
+                            }}
+                          >
+                            {formatDate(p.submittedAt)}
+                          </span>
+                          {isFinished ? (
+                            <span
+                              className="font-mono"
+                              style={{
+                                color: "rgba(255,180,60,0.6)",
+                                background: "rgba(255,180,60,0.06)",
+                                fontSize: "10px",
+                                fontWeight: 600,
+                                padding: "3px 8px",
+                                borderRadius: "4px",
+                                letterSpacing: "0.06em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              View results
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                color: "rgba(255,255,255,0.2)",
+                                fontSize: "18px",
+                              }}
+                            >
+                              {"\u203A"}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* See more */}
+                  {hasMore && (
+                    <button
+                      onClick={(e) => showMore(group.creatorId, e)}
+                      className="font-body w-full text-center"
+                      style={{
+                        padding: "10px 20px",
+                        fontSize: "13px",
+                        color: `rgba(${group.color},0.6)`,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      See more ({remaining} remaining)
+                    </button>
                   )}
                 </div>
-                <div
-                  className="font-mono"
-                  style={{
-                    fontSize: "11px",
-                    color: "rgba(255,255,255,0.25)",
-                  }}
-                >
-                  {formatDate(p.submittedAt)}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {showComplexity && (
-                  <div
-                    className="font-mono rounded-md"
-                    style={{
-                      fontSize: "12px",
-                      color: range.color,
-                      background: range.bg,
-                      padding: "4px 8px",
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    {range.icon} {range.label}
-                  </div>
-                )}
-                <div
-                  className="font-mono rounded-md"
-                  style={{
-                    fontSize: "13px",
-                    color: isFinished || isOwn
-                      ? "rgba(255,255,255,0.5)"
-                      : "rgba(255,180,60,0.7)",
-                    background: isFinished || isOwn
-                      ? "rgba(255,255,255,0.05)"
-                      : "rgba(255,180,60,0.08)",
-                    padding: "4px 10px",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  {(isFinished || isOwn) && !p.word.startsWith("?")
-                    ? p.word.toUpperCase()
-                    : `${p.word.length} letters`}
-                </div>
-                {isFinished ? (
-                  <div
-                    className="font-mono rounded-md"
-                    style={{
-                      color: "rgba(255,180,60,0.6)",
-                      background: "rgba(255,180,60,0.06)",
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      padding: "3px 8px",
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    View results
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.2)",
-                      fontSize: "18px",
-                    }}
-                  >
-                    ›
-                  </div>
-                )}
-              </div>
-            </button>
+              )}
+            </div>
           );
         })}
+
+        {/* Show own words link when hidden */}
+        {hideOwn && ownGroup && (
+          <button
+            onClick={toggleHideOwn}
+            className="font-mono text-left"
+            style={{
+              fontSize: "11px",
+              color: "rgba(255,255,255,0.2)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px 0",
+            }}
+          >
+            Show my words ({ownGroup.puzzles.length})
+          </button>
+        )}
       </div>
-
-
     </div>
   );
 }

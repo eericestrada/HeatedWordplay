@@ -60,7 +60,20 @@ export default function App() {
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [puzzlesLoading, setPuzzlesLoading] = useState(true);
   const [groups, setGroups] = useState<Array<{ id: string; name: string; invite_code: string }>>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupIdRaw] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("hw-selected-group") || null;
+    } catch {
+      return null;
+    }
+  });
+  const setSelectedGroupId = (id: string | null) => {
+    setSelectedGroupIdRaw(id);
+    try {
+      if (id) localStorage.setItem("hw-selected-group", id);
+      else localStorage.removeItem("hw-selected-group");
+    } catch { /* ignore */ }
+  };
   const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
 
   // Deep link: extract puzzle ID from URL path (e.g. /play/{uuid})
@@ -89,8 +102,11 @@ export default function App() {
       .order("created_at", { ascending: false });
     const g = data || [];
     setGroups(g);
-    if (g.length > 0 && !selectedGroupId) {
-      setSelectedGroupId(g[0].id);
+    if (g.length > 0) {
+      // If no saved selection, or saved group no longer exists, default to first
+      if (!selectedGroupId || !g.some((grp) => grp.id === selectedGroupId)) {
+        setSelectedGroupId(g[0].id);
+      }
     }
   }, [user, selectedGroupId]);
 
