@@ -40,7 +40,7 @@ export function buildEmojiGridWithGuesses(rows: CompletedRow[]): string {
           return "⬛";
         })
         .join("");
-      return `${word} ${emojis}`;
+      return `${emojis} ${word}`;
     })
     .join("\n");
 }
