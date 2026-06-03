@@ -40,18 +40,16 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
 
   const medal = (attempt?.medal as Medal) || null;
   const totalGuesses = (attempt?.total_guesses as number) || 0;
-  const usedClue = (attempt?.used_clue as boolean) || false;
   const magnetsUsed = (attempt?.magnets_used as number) || 0;
   const solved = medal !== null;
   const wordLength = puzzle.wordLength || puzzle.word.length;
 
+  // Clues are penalty-free (matches VictoryScreen / scoring.ts) — only magnets reduce the score.
   const multiplier = getMultiplier(medal);
-  const cluePenalty = usedClue ? 0.5 : 1.0;
   const magnetPenalty = magnetsUsed === 0 ? 1 : magnetsUsed === 1 ? 0.75 : 0.25;
-  const finalScore = Math.round(puzzle.complexity * multiplier * cluePenalty * magnetPenalty);
+  const finalScore = Math.round(puzzle.complexity * multiplier * magnetPenalty);
 
   const aids = [
-    usedClue && "clue",
     magnetsUsed > 0 && `${magnetsUsed} magnet${magnetsUsed > 1 ? "s" : ""}`,
   ].filter(Boolean).join(" + ");
 
