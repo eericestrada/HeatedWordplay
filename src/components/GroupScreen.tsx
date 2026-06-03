@@ -3,7 +3,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { getGroupLeaderboard } from "../lib/api";
 import { getMedalEmoji } from "../utils/scoring";
-import type { LeaderboardEntry } from "../types";
+import ReviewScreen from "./ReviewScreen";
+import type { LeaderboardEntry, Puzzle } from "../types";
 
 interface Group {
   id: string;
@@ -92,6 +93,10 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
   const [activityLoading, setActivityLoading] = useState(false);
   const [groupPuzzles, setGroupPuzzles] = useState<GroupPuzzle[]>([]);
   const [puzzlesLoading, setPuzzlesLoading] = useState(false);
+  // Revealed words for puzzles the user has already attempted (keyed by puzzle_id)
+  const [attemptedWords, setAttemptedWords] = useState<Record<string, string>>({});
+  // When set, show the in-group review for an already-played puzzle
+  const [reviewPuzzle, setReviewPuzzle] = useState<Puzzle | null>(null);
   const [detailTab, setDetailTab] = useState<"activity" | "members" | "puzzles" | "leaderboard">("puzzles");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
@@ -166,8 +171,57 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
     if (err) {
       console.error("Group puzzles error:", err);
     }
-    setGroupPuzzles((data as GroupPuzzle[]) || []);
+    const list = (data as GroupPuzzle[]) || [];
+    setGroupPuzzles(list);
     setPuzzlesLoading(false);
+
+    // For puzzles the user has already attempted, the word is exposed by
+    // puzzles_visible — fetch them so we can show the word in the list directly.
+    const attemptedIds = list.filter((p) => p.has_attempted).map((p) => p.puzzle_id);
+    if (attemptedIds.length === 0) {
+      setAttemptedWords({});
+      return;
+    }
+    const { data: wordRows } = await supabase
+      .from("puzzles_visible")
+      .select("id, word")
+      .in("id", attemptedIds);
+    const map: Record<string, string> = {};
+    (wordRows || []).forEach((r: Record<string, unknown>) => {
+      const w = r.word as string | null;
+      if (w) map[r.id as string] = w;
+    });
+    setAttemptedWords(map);
+  };
+
+  // Open the review for an already-attempted puzzle, rendered inside the group
+  // screen so "Back" returns to the puzzle list rather than the home screen.
+  const openPuzzleReview = async (puzzleId: string) => {
+    const { data } = await supabase
+      .from("puzzles_visible")
+      .select("*")
+      .eq("id", puzzleId)
+      .single();
+    if (!data) return;
+    const puzzle: Puzzle = {
+      id: data.id as string,
+      word: (data.word as string) || "?".repeat(data.word_length as number),
+      creator:
+        (data.creator_display_name as string) ||
+        (data.creator_username as string) ||
+        "Unknown",
+      creator_id: data.creator_id as string,
+      definition: (data.definition as string) || "",
+      clue: (data.clue as string) || null,
+      context: (data.inspo as string) || null,
+      complexity: data.complexity as number,
+      submittedAt: (data.created_at as string)?.split("T")[0] || "",
+      wordLength: data.word_length as number,
+      hasClue: data.has_clue as boolean,
+      hasAttempted: data.has_attempted as boolean,
+      isPublic: data.is_public as boolean,
+    };
+    setReviewPuzzle(puzzle);
   };
 
   const fetchLeaderboard = async (groupId: string) => {
@@ -366,6 +420,17 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
           Loading...
         </div>
       </div>
+    );
+  }
+
+  // ---- IN-GROUP REVIEW ---- (overlays detail; Back returns to the puzzle list)
+  if (reviewPuzzle) {
+    return (
+      <ReviewScreen
+        puzzle={reviewPuzzle}
+        onBack={() => setReviewPuzzle(null)}
+        groupId={selectedGroup?.id ?? null}
+      />
     );
   }
 
@@ -634,15 +699,18 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                 {groupPuzzles.map((p) => {
                   const creatorName = p.creator_display_name || p.creator_username;
                   const isOwn = profile?.username === p.creator_username;
+                  const attemptedWord = attemptedWords[p.puzzle_id];
                   return (
                     <button
                       key={p.puzzle_id}
                       onClick={() => {
-                        if (onSelectPuzzle) {
+                        if (p.has_attempted) {
+                          openPuzzleReview(p.puzzle_id);
+                        } else if (onSelectPuzzle) {
                           onSelectPuzzle(p.puzzle_id);
                         }
                       }}
-                      disabled={!onSelectPuzzle}
+                      disabled={!p.has_attempted && !onSelectPuzzle}
                       className="flex items-center justify-between rounded-lg text-left w-full"
                       style={{
                         background: p.has_attempted
@@ -652,9 +720,10 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                         border: p.has_attempted
                           ? "1px solid rgba(255,255,255,0.04)"
                           : "1px solid rgba(255,180,60,0.15)",
-                        cursor: onSelectPuzzle ? "pointer" : "default",
+                        cursor:
+                          p.has_attempted || onSelectPuzzle ? "pointer" : "default",
                         transition: "all 0.15s ease",
-                        opacity: p.has_attempted ? 0.6 : 1,
+                        opacity: p.has_attempted ? 0.85 : 1,
                       }}
                     >
                       <div className="flex-1 min-w-0">
@@ -662,9 +731,22 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                           className="font-body"
                           style={{ fontSize: "14px", color: "#f5f0e8", lineHeight: 1.4 }}
                         >
-                          <span style={{ color: "rgba(255,180,60,0.8)", fontWeight: 700 }}>
-                            {p.word_length} letters
-                          </span>
+                          {attemptedWord ? (
+                            <span
+                              style={{
+                                color: "#f5f0e8",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                              }}
+                            >
+                              {attemptedWord}
+                            </span>
+                          ) : (
+                            <span style={{ color: "rgba(255,180,60,0.8)", fontWeight: 700 }}>
+                              {p.word_length} letters
+                            </span>
+                          )}
                           {" by "}
                           <strong style={{ color: "rgba(255,255,255,0.8)" }}>
                             {isOwn ? "you" : creatorName}
@@ -713,13 +795,13 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                             className="font-body"
                             style={{
                               fontSize: "11px",
-                              color: "rgba(255,255,255,0.25)",
+                              color: "rgba(255,255,255,0.4)",
                               background: "rgba(255,255,255,0.04)",
                               padding: "3px 8px",
                               borderRadius: "4px",
                             }}
                           >
-                            played
+                            review →
                           </span>
                         ) : (
                           <span
