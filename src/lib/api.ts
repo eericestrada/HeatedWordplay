@@ -3,6 +3,7 @@ import type {
   DictionaryEntry,
   PairStreak,
   PuzzleStats,
+  SubmissionStat,
   LeaderboardEntry,
   PlayerStats,
   CreatorStats,
@@ -229,6 +230,50 @@ export async function getPairStreaks(userId: string): Promise<PairStreak[]> {
     return [];
   }
   return (data as PairStreak[]) || [];
+}
+
+/**
+ * Log a single word submission (valid or invalid) for a friendly puzzle.
+ * Fire-and-forget: never blocks gameplay and swallows errors. Used to track
+ * how many invalid words a player tried, even on puzzles they never finish.
+ */
+export async function logSubmission(
+  puzzleId: string,
+  isValid: boolean,
+): Promise<void> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from("submissions").insert({
+      puzzle_id: puzzleId,
+      user_id: user.id,
+      is_valid: isValid,
+    });
+  } catch {
+    // Best-effort logging — ignore failures.
+  }
+}
+
+/**
+ * Per-puzzle submission stats for a group: invalid-word counts per player,
+ * including those who never completed the puzzle (completed = false).
+ */
+export async function getPuzzleSubmissionStats(
+  puzzleId: string,
+  groupId: string,
+): Promise<SubmissionStat[]> {
+  const { data, error } = await supabase.rpc("get_puzzle_submission_stats", {
+    p_puzzle_id: puzzleId,
+    p_group_id: groupId,
+  });
+  if (error) {
+    console.error("Failed to fetch puzzle submission stats:", error);
+    return [];
+  }
+  return (data as SubmissionStat[]) || [];
 }
 
 /**

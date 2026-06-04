@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
-import { evaluateGuess, useMagnetServer, lookupWord } from "../lib/api";
+import { evaluateGuess, useMagnetServer, lookupWord, logSubmission } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { getMedal } from "../utils/scoring";
 import type {
@@ -391,6 +391,13 @@ export default function GameBoard({
       setEvaluating(true);
       const dictResult = await lookupWord(guessWord);
       setEvaluating(false);
+
+      // Log every submission on real shared friendly puzzles (skip mock/local,
+      // own, and daily). Fire-and-forget — never blocks gameplay.
+      if (useServerEval && !isDaily) {
+        void logSubmission(puzzle.id as string, !!dictResult);
+      }
+
       if (!dictResult) {
         setShake(true);
         showMsg("Not a valid word");

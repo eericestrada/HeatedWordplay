@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { getPuzzleStats } from "../lib/api";
+import { getPuzzleStats, getPuzzleSubmissionStats } from "../lib/api";
 import { getMedalEmoji } from "../utils/scoring";
 import { useAuth } from "../contexts/AuthContext";
-import type { PuzzleStats } from "../types";
+import type { PuzzleStats, SubmissionStat } from "../types";
 
 interface PuzzleStatsPanelProps {
   puzzleId: string;
@@ -12,6 +12,7 @@ interface PuzzleStatsPanelProps {
 export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanelProps) {
   const { user } = useAuth();
   const [stats, setStats] = useState<PuzzleStats | null>(null);
+  const [submissionStats, setSubmissionStats] = useState<SubmissionStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,8 +20,12 @@ export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanel
       setLoading(false);
       return;
     }
-    getPuzzleStats(puzzleId, groupId).then((data) => {
-      setStats(data);
+    Promise.all([
+      getPuzzleStats(puzzleId, groupId),
+      getPuzzleSubmissionStats(puzzleId, groupId),
+    ]).then(([statsData, subData]) => {
+      setStats(statsData);
+      setSubmissionStats(subData);
       setLoading(false);
     });
   }, [puzzleId, groupId]);
@@ -28,6 +33,15 @@ export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanel
   if (loading || !stats || stats.total_attempts === 0) return null;
 
   const solveRate = Math.round((stats.total_solved / stats.total_attempts) * 100);
+
+  // Invalid-word count per player, keyed by user_id.
+  const invalidByUser = new Map(
+    submissionStats.map((s) => [s.user_id, s.invalid_count]),
+  );
+  // Players who tried invalid words but never finished the puzzle.
+  const abandoners = submissionStats.filter(
+    (s) => !s.completed && s.invalid_count > 0,
+  );
 
   // Find current user's rank among solvers
   const userRank = stats.solvers.findIndex((s) => s.user_id === user?.id) + 1;
@@ -203,6 +217,15 @@ export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanel
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {(invalidByUser.get(s.user_id) ?? 0) > 0 && (
+                  <span
+                    className="font-mono"
+                    style={{ fontSize: "11px", color: "rgba(255,140,40,0.7)" }}
+                    title="Invalid words tried"
+                  >
+                    ✗{invalidByUser.get(s.user_id)}
+                  </span>
+                )}
                 <span style={{ fontSize: "13px" }}>
                   {getMedalEmoji(s.medal)}
                 </span>
@@ -213,6 +236,49 @@ export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanel
                   {s.total_guesses}/6
                 </span>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Didn't finish — players who tried invalid words but never completed */}
+      {abandoners.length > 0 && (
+        <div className="flex flex-col gap-1" style={{ marginTop: "12px" }}>
+          <div
+            className="font-mono uppercase tracking-[0.12em]"
+            style={{
+              fontSize: "9px",
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.25)",
+              marginBottom: "2px",
+            }}
+          >
+            Didn't finish
+          </div>
+          {abandoners.slice(0, 6).map((s) => (
+            <div
+              key={s.user_id}
+              className="flex items-center justify-between"
+              style={{ padding: "4px 0", opacity: 0.7 }}
+            >
+              <span
+                className="font-body truncate"
+                style={{
+                  fontSize: "13px",
+                  color: s.user_id === user?.id ? "rgba(255,180,60,0.9)" : "rgba(255,255,255,0.6)",
+                  fontWeight: s.user_id === user?.id ? 600 : 400,
+                }}
+              >
+                {s.display_name || s.username}
+                {s.user_id === user?.id && " (you)"}
+              </span>
+              <span
+                className="font-mono shrink-0"
+                style={{ fontSize: "11px", color: "rgba(255,140,40,0.7)" }}
+                title="Invalid words tried"
+              >
+                ✗{s.invalid_count}
+              </span>
             </div>
           ))}
         </div>

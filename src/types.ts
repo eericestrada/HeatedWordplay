@@ -158,6 +158,15 @@ export interface PuzzleStats {
   }>;
 }
 
+export interface SubmissionStat {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  invalid_count: number;
+  total_submissions: number;
+  completed: boolean;
+}
+
 export interface LeaderboardEntry {
   user_id: string;
   username: string;
