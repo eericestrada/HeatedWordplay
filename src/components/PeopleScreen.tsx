@@ -62,20 +62,6 @@ export default function PeopleScreen({ onBack, onOpenH2H }: PeopleScreenProps) {
       className="flex flex-col items-center gap-5 max-w-[400px] mx-auto"
       style={{ padding: "40px 20px", animation: "fadeUp 0.3s ease" }}
     >
-      <button
-        onClick={onBack}
-        className="self-start font-body"
-        style={{
-          background: "none",
-          border: "none",
-          color: "rgba(255,255,255,0.35)",
-          fontSize: "14px",
-          cursor: "pointer",
-        }}
-      >
-        ← Back
-      </button>
-
       <div style={{ fontSize: "36px", lineHeight: 1 }}>👤</div>
       <div
         className="font-display text-center"

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { getHeadToHead } from "../lib/api";
-import { getMedalEmoji } from "../utils/scoring";
+import { getMedalEmoji, getDifficultyTier } from "../utils/scoring";
 import type { HeadToHead as H2HData, H2HWord } from "../types";
 
 interface HeadToHeadProps {
@@ -54,6 +54,7 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
 
   const wordRow = (w: H2HWord, i: number) => {
     const detail = outcomeDetail(w);
+    const tier = w.has_breakdown ? getDifficultyTier(w.complexity) : null;
     return (
       <div
         key={`${w.puzzle_id}-${i}`}
@@ -64,9 +65,20 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
           border: "1px solid rgba(255,255,255,0.05)",
         }}
       >
-        <span className="font-display" style={{ fontSize: "15px", fontWeight: 700, letterSpacing: "0.04em", color: "#f5f0e8" }}>
-          {w.word.toUpperCase()}
-        </span>
+        <div className="flex items-center min-w-0" style={{ gap: "8px" }}>
+          <span className="font-display" style={{ fontSize: "15px", fontWeight: 700, letterSpacing: "0.04em", color: "#f5f0e8" }}>
+            {w.word.toUpperCase()}
+          </span>
+          {tier && (
+            <span
+              title={`${tier.label} · difficulty ${w.complexity}`}
+              aria-label={tier.label}
+              style={{ fontSize: "13px", lineHeight: 1, flexShrink: 0 }}
+            >
+              {tier.icon}
+            </span>
+          )}
+        </div>
         <div className="flex items-center" style={{ gap: "8px" }}>
           <span className="font-body" style={{ fontSize: "11px", color: detail.color }}>{detail.text}</span>
           <span style={{ fontSize: "15px" }}>{outcomeEmoji(w)}</span>

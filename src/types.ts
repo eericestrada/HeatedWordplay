@@ -145,6 +145,10 @@ export interface H2HWord {
   medal: Medal | null;
   surrendered: boolean;
   total_guesses: number;
+  /** Puzzle difficulty score; pair with has_breakdown to show the tier icon. */
+  complexity: number;
+  /** True when scored with the new difficulty model (tier icon applies). */
+  has_breakdown: boolean;
   completed_at: string;
 }
 

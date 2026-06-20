@@ -1088,7 +1088,7 @@ export default function App() {
         );
       })()}
       {screen === "submit" && (
-        <SubmitWord onSubmit={handleSubmitWord} onBack={back} />
+        <SubmitWord onSubmit={handleSubmitWord} />
       )}
       {screen === "submitted" && selectedPuzzle && submittedPuzzleId && (
         <ShareScreen
@@ -1099,10 +1099,10 @@ export default function App() {
         />
       )}
       {screen === "wordmaster" && (
-        <WordMasterScreen onBack={back} />
+        <WordMasterScreen />
       )}
       {screen === "editor-schedule" && (
-        <EditorScheduleScreen onBack={back} />
+        <EditorScheduleScreen />
       )}
     </>,
     {

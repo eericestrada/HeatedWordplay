@@ -10,9 +10,6 @@ import {
 
 type Step = "enter" | "pick" | "review";
 
-interface WordMasterScreenProps {
-  onBack: () => void;
-}
 
 const inputStyle: React.CSSProperties = {
   fontFamily: "'DM Sans', sans-serif",
@@ -34,7 +31,7 @@ const statusColors: Record<string, { color: string; bg: string; label: string }>
   skipped: { color: "rgba(255,100,100,0.8)", bg: "rgba(255,100,100,0.1)", label: "Skipped" },
 };
 
-export default function WordMasterScreen({ onBack }: WordMasterScreenProps) {
+export default function WordMasterScreen() {
   // Submit flow state
   const [step, setStep] = useState<Step>("enter");
   const [word, setWord] = useState("");
@@ -153,29 +150,11 @@ export default function WordMasterScreen({ onBack }: WordMasterScreenProps) {
     }
   };
 
-  const backBtn = (onClick: () => void, label = "\u2190 Back") => (
-    <button
-      onClick={onClick}
-      className="self-start font-body"
-      style={{
-        background: "none",
-        border: "none",
-        color: "rgba(255,255,255,0.35)",
-        fontSize: "14px",
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div
       className="flex flex-col gap-6 max-w-[480px] mx-auto"
       style={{ padding: "32px 20px", animation: "fadeUp 0.3s ease" }}
     >
-      {backBtn(onBack)}
-
       {/* Header */}
       <div>
         <div

@@ -6,9 +6,6 @@ import {
   unscheduleDailyWord,
 } from "../lib/api";
 
-interface EditorScheduleScreenProps {
-  onBack: () => void;
-}
 
 /** Generate an array of date strings (YYYY-MM-DD) for the next N days starting from today */
 function getUpcomingDates(count: number): string[] {
@@ -34,7 +31,7 @@ function formatDate(dateStr: string): string {
   return `${dayName} \u00B7 ${monthDay}`;
 }
 
-export default function EditorScheduleScreen({ onBack }: EditorScheduleScreenProps) {
+export default function EditorScheduleScreen() {
   const [allWords, setAllWords] = useState<DailyPoolWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -131,13 +128,6 @@ export default function EditorScheduleScreen({ onBack }: EditorScheduleScreenPro
         className="flex flex-col gap-4 max-w-[480px] mx-auto"
         style={{ padding: "32px 20px" }}
       >
-        <button
-          onClick={onBack}
-          className="self-start font-body"
-          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: "14px", cursor: "pointer" }}
-        >
-          {"\u2190"} Back
-        </button>
         <div className="font-body" style={{ fontSize: "14px", color: "rgba(255,255,255,0.3)" }}>
           Loading schedule...
         </div>
@@ -150,13 +140,6 @@ export default function EditorScheduleScreen({ onBack }: EditorScheduleScreenPro
       className="flex flex-col gap-4 max-w-[520px] mx-auto"
       style={{ padding: "32px 20px", animation: "fadeUp 0.3s ease" }}
     >
-      <button
-        onClick={onBack}
-        className="self-start font-body"
-        style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: "14px", cursor: "pointer" }}
-      >
-        {"\u2190"} Back
-      </button>
 
       {/* Header */}
       <div>

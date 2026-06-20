@@ -109,20 +109,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
       style={{ padding: "24px 20px 40px", animation: "fadeUp 0.4s ease" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between w-full">
-        <button
-          onClick={onBack}
-          className="font-body"
-          style={{
-            background: "none",
-            border: "none",
-            color: "rgba(255,255,255,0.35)",
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          \u2190 Back
-        </button>
+      <div className="flex items-center justify-center w-full">
         <div
           className="font-mono uppercase tracking-[0.12em]"
           style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}

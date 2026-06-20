@@ -6,7 +6,6 @@ type Step = "enter" | "pick" | "clue" | "inspo" | "review";
 
 interface SubmitWordProps {
   onSubmit: (data: SubmitWordData) => void;
-  onBack: () => void;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -22,7 +21,7 @@ const inputStyle: React.CSSProperties = {
   transition: "border-color 0.15s ease",
 };
 
-export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
+export default function SubmitWord({ onSubmit }: SubmitWordProps) {
   const [step, setStep] = useState<Step>("enter");
   const [word, setWord] = useState("");
   const [definitions, setDefinitions] = useState<DictionaryEntry[]>([]);
@@ -135,7 +134,6 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
         className="flex flex-col items-center gap-5 max-w-[480px] mx-auto"
         style={{ padding: "32px 20px", animation: "fadeUp 0.3s ease" }}
       >
-        {backBtn(onBack)}
         <div
           className="font-display text-center"
           style={{ fontSize: "24px", fontWeight: 700, color: "#f5f0e8" }}
