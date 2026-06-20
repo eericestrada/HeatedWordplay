@@ -198,16 +198,31 @@ export default function GameBoard({
   const filledCount = grid.filter((c) => c.letter).length;
   const hasPins = grid.some((c) => c.pinned);
   const isShort = filledCount > 0 && filledCount < wordLength;
-  // Letters eligible for magnet: present OR correct, with at least one unhinted position.
-  // For server-eval puzzles the answer is hidden, so we can't check positions client-side —
-  // just allow any present/correct letter (the server will reject if already placed).
+
+  // Positions the player already knows are correct — greens from past guesses
+  // and earlier magnet reveals. The magnet must never spend itself surfacing
+  // one of these (e.g. a second "A" must not reveal an "A" already locked in).
+  const knownCorrect: Record<number, string> = {};
+  completedRows.forEach((row) => {
+    row.result.forEach((cell, i) => {
+      if (cell.status === "correct" && cell.letter) knownCorrect[i] = cell.letter;
+    });
+  });
+  for (const [pos, letter] of Object.entries(hintedCells)) {
+    knownCorrect[Number(pos)] = letter;
+  }
+
+  // Letters eligible for magnet: present OR correct, with at least one position
+  // the player doesn't already know. For server-eval puzzles the answer is
+  // hidden, so we can't check positions client-side — just allow any
+  // present/correct letter (the server skips positions we report as known).
   const magnetEligibleLetters = Object.entries(letterStates)
     .filter(([ch, s]) => {
       if (s !== "present" && s !== "correct") return false;
       if (useServerEval) return true;
       const answerLetters = puzzle.word.split("");
       for (let i = 0; i < wordLength; i++) {
-        if (answerLetters[i] === ch && !hintedCells[i]) return true;
+        if (answerLetters[i] === ch && knownCorrect[i] !== ch) return true;
       }
       return false;
     })
@@ -268,11 +283,14 @@ export default function GameBoard({
       // Server-side magnet — don't expose the answer
       setEvaluating(true);
       try {
-        const currentGrid = grid.map((c, i) => ({
-          letter: c.letter,
-          position: i,
-          pinned: c.pinned,
-        }));
+        // Report known-correct positions as pinned with their letter so the
+        // server won't reveal a position the player already has (e.g. a second
+        // "A" must not surface an "A" they've already locked in).
+        const currentGrid = grid.map((c, i) =>
+          knownCorrect[i]
+            ? { letter: knownCorrect[i], position: i, pinned: true }
+            : { letter: c.letter, position: i, pinned: c.pinned },
+        );
         const result = await useMagnetServer({
           puzzle_id: puzzle.id as string,
           letter: ch,
@@ -312,7 +330,7 @@ export default function GameBoard({
       }
       let targetPos: number | null = null;
       for (const pos of correctPositions) {
-        if (!hintedCells[pos]) {
+        if (knownCorrect[pos] !== ch) {
           targetPos = pos;
           break;
         }
