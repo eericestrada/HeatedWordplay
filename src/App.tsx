@@ -15,10 +15,12 @@ import ActivityFeed from "./components/ActivityFeed";
 import DailyHeatCard from "./components/DailyHeatCard";
 import WordMasterScreen from "./components/WordMasterScreen";
 import EditorScheduleScreen from "./components/EditorScheduleScreen";
-import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord } from "./lib/api";
+import MyWords from "./components/MyWords";
+import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord, getCreatorStats } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import { buildEmojiGrid } from "./utils/sharing";
 import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak } from "./utils/dailyStorage";
+import { buildMyWordRows, summarizeMyWords, getSeenMap } from "./utils/myWords";
 import type {
   Puzzle,
   Screen,
@@ -30,6 +32,7 @@ import type {
   PairStreak,
   GameMode,
   ResultData,
+  CreatorStats,
   DailyHeatState,
   DailyWordMeta,
   DifficultyBreakdown,
@@ -87,6 +90,43 @@ export default function App() {
 
   // Streaks data — indexed by partner_id for fast lookup
   const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
+
+  // Creator data — powers the My Words hub + the home "Your words" entry.
+  const [creatorStats, setCreatorStats] = useState<CreatorStats | null>(null);
+  const [ownShares, setOwnShares] = useState<Set<string>>(new Set());
+  const [ownPublic, setOwnPublic] = useState<Record<string, boolean>>({});
+  const [creatorLoading, setCreatorLoading] = useState(true);
+
+  const fetchCreatorData = useCallback(async () => {
+    if (!user) return;
+    setCreatorLoading(true);
+    const stats = await getCreatorStats(user.id);
+    setCreatorStats(stats);
+
+    // is_public per own puzzle (RLS lets the creator read their own rows)
+    const { data: own } = await supabase
+      .from("puzzles")
+      .select("id, is_public")
+      .eq("creator_id", user.id);
+    const pub: Record<string, boolean> = {};
+    (own || []).forEach((p: Record<string, unknown>) => {
+      pub[p.id as string] = !!p.is_public;
+    });
+    setOwnPublic(pub);
+
+    // Which own puzzles have any shares (drafts have none)
+    const ids = (own || []).map((p: Record<string, unknown>) => p.id as string);
+    if (ids.length > 0) {
+      const { data: shareRows } = await supabase
+        .from("puzzle_shares")
+        .select("puzzle_id")
+        .in("puzzle_id", ids);
+      setOwnShares(new Set((shareRows || []).map((s: Record<string, unknown>) => s.puzzle_id as string)));
+    } else {
+      setOwnShares(new Set());
+    }
+    setCreatorLoading(false);
+  }, [user]);
 
   // ============================================================
   // Navigation primitives — the back-stack mirrors browser history
@@ -245,8 +285,9 @@ export default function App() {
       fetchGroups();
       fetchStreaks();
       refreshDailyWord();
+      fetchCreatorData();
     }
-  }, [user, fetchPuzzles, fetchGroups, fetchStreaks, refreshDailyWord]);
+  }, [user, fetchPuzzles, fetchGroups, fetchStreaks, refreshDailyWord, fetchCreatorData]);
 
   // When we return to the home list (from anywhere), refresh the data that may
   // have changed while away — completed status, streaks, daily heat. Replaces
@@ -256,10 +297,17 @@ export default function App() {
     if (prevScreenRef.current !== "select" && screen === "select" && user) {
       fetchPuzzles();
       fetchStreaks();
+      fetchCreatorData();
       if (dailyWordMeta) setDailyState(computeDailyHeatState(dailyWordMeta.scheduled_date));
     }
     prevScreenRef.current = screen;
-  }, [screen, user, fetchPuzzles, fetchStreaks, dailyWordMeta]);
+  }, [screen, user, fetchPuzzles, fetchStreaks, fetchCreatorData, dailyWordMeta]);
+
+  // Refresh creator data when entering the hub (e.g. after sharing a draft,
+  // which returns here rather than to the home list).
+  useEffect(() => {
+    if (screen === "mywords" && user) fetchCreatorData();
+  }, [screen, user, fetchCreatorData]);
 
   // Deep link: auto-navigate to a puzzle when opened via /play/{id}
   useEffect(() => {
@@ -442,6 +490,15 @@ export default function App() {
 
   const currentGroupName = groups.find((g) => g.id === selectedGroupId)?.name;
 
+  // My Words hub data (also drives the home "Your words" entry)
+  const myWordRows = buildMyWordRows(creatorStats, ownPublic, ownShares, getSeenMap());
+  const myWordsSummary = summarizeMyWords(myWordRows);
+
+  const openMyWords = () => navigate({ screen: "mywords" });
+  // Sharing a draft reuses the existing ShareScreen (rendered by "submitted").
+  const handleShareDraft = (p: Puzzle) =>
+    navigate({ screen: "submitted", puzzle: p, submittedPuzzleId: String(p.id) });
+
   // ===== app bar (authenticated, non-play screens) =====
   const appBar = (
     <div
@@ -551,6 +608,7 @@ export default function App() {
     fontWeight: 500,
   };
   const drawerMainItems: Array<{ icon: string; label: string; screen: Screen }> = [
+    { icon: "✍️", label: "Your words", screen: "mywords" },
     { icon: "📊", label: "Your stats", screen: "stats" },
     { icon: "👤", label: "People", screen: "people" },
     { icon: "👥", label: "Groups", screen: "groups" },
@@ -830,6 +888,54 @@ export default function App() {
                     : undefined}
                 />
               </div>
+
+              {/* Your words entry */}
+              <div style={{ padding: "0 20px 8px" }} className="max-w-[480px] mx-auto w-full">
+                <button
+                  onClick={openMyWords}
+                  className="font-body w-full text-left flex items-center justify-between rounded-xl"
+                  style={{
+                    border: "1px solid rgba(255,180,60,0.2)",
+                    background: "rgba(255,180,60,0.05)",
+                    padding: "16px 18px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div>
+                    <div
+                      className="font-body flex items-center"
+                      style={{ fontSize: "15px", fontWeight: 600, color: "#f5f0e8", gap: "8px" }}
+                    >
+                      Your words
+                      {myWordsSummary.newSolvers > 0 && (
+                        <span
+                          className="font-mono"
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            color: "#0f0d0b",
+                            background: "rgba(255,180,60,0.95)",
+                            padding: "2px 7px",
+                            borderRadius: "20px",
+                          }}
+                        >
+                          {myWordsSummary.newSolvers} new
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="font-mono"
+                      style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "4px" }}
+                    >
+                      {myWordsSummary.words > 0
+                        ? `${myWordsSummary.words} created · ${myWordsSummary.plays} plays · see who's solving`
+                        : "Create your first word"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "20px", color: "rgba(255,180,60,0.6)" }}>{"›"}</span>
+                </button>
+              </div>
+
               <PuzzleSelector
                 puzzles={puzzles}
                 completedPuzzles={completedPuzzles}
@@ -925,6 +1031,17 @@ export default function App() {
       )}
       {screen === "stats" && (
         <StatsScreen onBack={back} />
+      )}
+      {screen === "mywords" && (
+        <MyWords
+          rows={myWordRows}
+          summary={myWordsSummary}
+          puzzles={puzzles}
+          loading={creatorLoading}
+          onOpenPuzzle={(p) => navigate({ screen: "review", puzzle: p })}
+          onShareDraft={handleShareDraft}
+          onCreateNew={() => navigate({ screen: "submit" })}
+        />
       )}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={back} />

@@ -136,7 +136,7 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "wordmaster" | "editor-schedule";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "mywords" | "wordmaster" | "editor-schedule";
 
 /**
  * One entry in the navigation back-stack. Each node carries the context its

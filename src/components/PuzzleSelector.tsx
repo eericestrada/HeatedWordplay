@@ -44,7 +44,6 @@ interface CreatorGroup {
   creatorId: string;
   creatorName: string;
   puzzles: Puzzle[];
-  isOwn: boolean;
   color: string;
   streak: number;
 }
@@ -60,36 +59,26 @@ export default function PuzzleSelector({
   const { user } = useAuth();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showCount, setShowCount] = useState<Record<string, number>>({});
-  const [hideOwn, setHideOwn] = useState(() => {
-    try {
-      return localStorage.getItem("hw-hide-own") === "true";
-    } catch {
-      return false;
-    }
-  });
 
-  // Group puzzles by creator
+  // Group unsolved puzzles by creator. The player's own words now live in the
+  // My Words hub, so they're excluded here entirely.
   const groupMap = new Map<string, CreatorGroup>();
 
   for (const p of puzzles) {
     const cid = p.creator_id || "unknown";
-    const isOwn = cid === user?.id;
+    if (cid === user?.id) continue; // own words → My Words hub
 
-    // For others: only unsolved puzzles. For own: all submissions.
-    if (!isOwn) {
-      const status = completedPuzzles[p.id];
-      if (status && status !== "submitted") continue;
-    }
+    // Only show puzzles the player hasn't finished yet.
+    if (completedPuzzles[p.id]) continue;
 
     let group = groupMap.get(cid);
     if (!group) {
       group = {
         creatorId: cid,
-        creatorName: isOwn ? "You" : p.creator,
+        creatorName: p.creator,
         puzzles: [],
-        isOwn,
         color: getCreatorColor(cid),
-        streak: !isOwn && p.creator_id ? streaks[p.creator_id]?.current_streak || 0 : 0,
+        streak: p.creator_id ? streaks[p.creator_id]?.current_streak || 0 : 0,
       };
       groupMap.set(cid, group);
     }
@@ -99,18 +88,11 @@ export default function PuzzleSelector({
   const groups: CreatorGroup[] = [];
   groupMap.forEach((g) => groups.push(g));
 
-  // Sort others by puzzle count descending, own row at the end
-  groups.sort((a, b) => {
-    if (a.isOwn) return 1;
-    if (b.isOwn) return -1;
-    return b.puzzles.length - a.puzzles.length;
-  });
+  // Sort by puzzle count descending
+  groups.sort((a, b) => b.puzzles.length - a.puzzles.length);
 
-  // Max unsolved count across other creators (for relative gradient scaling)
-  const maxCount = Math.max(
-    1,
-    ...groups.filter((g) => !g.isOwn).map((g) => g.puzzles.length),
-  );
+  // Max unsolved count across creators (for relative gradient scaling)
+  const maxCount = Math.max(1, ...groups.map((g) => g.puzzles.length));
 
   const toggleExpand = (creatorId: string) => {
     setExpanded((prev) => {
@@ -132,22 +114,6 @@ export default function PuzzleSelector({
     }));
   };
 
-  const toggleHideOwn = () => {
-    const next = !hideOwn;
-    setHideOwn(next);
-    try {
-      localStorage.setItem("hw-hide-own", String(next));
-    } catch {
-      // ignore
-    }
-  };
-
-  // Own group reference (may not exist if user has no submissions)
-  const ownGroup = groups.find((g) => g.isOwn);
-
-  // Visible groups: hide own if toggled
-  const visibleGroups = groups.filter((g) => !(g.isOwn && hideOwn));
-
   return (
     <div
       className="flex flex-col items-center gap-6 max-w-[480px] mx-auto"
@@ -163,7 +129,7 @@ export default function PuzzleSelector({
         className="font-body text-center"
         style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)" }}
       >
-        Select a word to guess. Trust your instincts.
+        Words others sent you. Trust your instincts.
       </div>
 
       {/* Send a Word */}
@@ -187,7 +153,7 @@ export default function PuzzleSelector({
 
       {/* Creator rows */}
       <div className="flex flex-col gap-2.5 w-full">
-        {visibleGroups.length === 0 && !hideOwn && (
+        {groups.length === 0 && (
           <div
             className="font-body text-center rounded-lg"
             style={{
@@ -202,7 +168,7 @@ export default function PuzzleSelector({
           </div>
         )}
 
-        {visibleGroups.map((group) => {
+        {groups.map((group) => {
           const isExpanded = expanded.has(group.creatorId);
           const limit = getVisibleCount(group.creatorId);
           const visiblePuzzles = isExpanded
@@ -212,14 +178,7 @@ export default function PuzzleSelector({
           const remaining = group.puzzles.length - limit;
 
           // Gradient width: relative to max count
-          const fillPct = group.isOwn
-            ? Math.min(
-                100,
-                (group.puzzles.length /
-                  Math.max(maxCount, group.puzzles.length)) *
-                  100,
-              )
-            : (group.puzzles.length / maxCount) * 100;
+          const fillPct = (group.puzzles.length / maxCount) * 100;
 
           return (
             <div
@@ -277,28 +236,8 @@ export default function PuzzleSelector({
                           fontWeight: 600,
                         }}
                       >
-                        {"\uD83D\uDD25"} {group.streak}
+                        {"🔥"} {group.streak}
                       </span>
-                    )}
-                    {group.isOwn && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleHideOwn();
-                        }}
-                        className="font-mono"
-                        style={{
-                          fontSize: "10px",
-                          color: "rgba(255,255,255,0.25)",
-                          background: "rgba(255,255,255,0.05)",
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        hide
-                      </button>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -323,7 +262,7 @@ export default function PuzzleSelector({
                         display: "inline-block",
                       }}
                     >
-                      {"\u203A"}
+                      {"›"}
                     </span>
                   </div>
                 </div>
@@ -340,7 +279,6 @@ export default function PuzzleSelector({
                   {visiblePuzzles.map((p) => {
                     const status = completedPuzzles[p.id];
                     const isFinished = status && status !== "submitted";
-                    const isOwnPuzzle = status === "submitted";
                     const tier = p.difficultyBreakdown ? getDifficultyTier(p.complexity) : null;
 
                     const handleClick = () => {
@@ -367,11 +305,9 @@ export default function PuzzleSelector({
                         }}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          {!group.isOwn && (
-                            <span style={{ fontSize: "12px", opacity: 0.35 }}>
-                              {p.isPublic ? "\uD83C\uDF10" : "\uD83D\uDC64"}
-                            </span>
-                          )}
+                          <span style={{ fontSize: "12px", opacity: 0.35 }}>
+                            {p.isPublic ? "🌐" : "👤"}
+                          </span>
                           <span
                             className="font-mono"
                             style={{
@@ -380,8 +316,7 @@ export default function PuzzleSelector({
                               letterSpacing: "0.06em",
                             }}
                           >
-                            {(isFinished || isOwnPuzzle) &&
-                            !p.word.startsWith("?")
+                            {isFinished && !p.word.startsWith("?")
                               ? p.word.toUpperCase()
                               : `${p.wordLength || p.word.length} letters`}
                           </span>
@@ -399,30 +334,6 @@ export default function PuzzleSelector({
                               {getMedalEmoji(
                                 status === "failed" ? null : status,
                               )}
-                            </span>
-                          )}
-                          {isOwnPuzzle && !p.hasAttempted && (
-                            <span
-                              className="font-mono"
-                              style={{
-                                fontSize: "10px",
-                                color: "rgba(26,158,158,0.7)",
-                                background: "rgba(26,158,158,0.1)",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              Test it
-                            </span>
-                          )}
-                          {isOwnPuzzle && p.hasAttempted && (
-                            <span
-                              style={{
-                                fontSize: "14px",
-                                color: "rgba(26,158,158,0.6)",
-                              }}
-                            >
-                              {"\u2713"}
                             </span>
                           )}
                         </div>
@@ -459,7 +370,7 @@ export default function PuzzleSelector({
                                 fontSize: "18px",
                               }}
                             >
-                              {"\u203A"}
+                              {"›"}
                             </span>
                           )}
                         </div>
@@ -489,24 +400,6 @@ export default function PuzzleSelector({
             </div>
           );
         })}
-
-        {/* Show own words link when hidden */}
-        {hideOwn && ownGroup && (
-          <button
-            onClick={toggleHideOwn}
-            className="font-mono text-left"
-            style={{
-              fontSize: "11px",
-              color: "rgba(255,255,255,0.2)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px 0",
-            }}
-          >
-            Show my words ({ownGroup.puzzles.length})
-          </button>
-        )}
       </div>
     </div>
   );
