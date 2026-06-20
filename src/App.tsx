@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "./contexts/AuthContext";
 import AuthScreen from "./components/AuthScreen";
 import UsernameScreen from "./components/UsernameScreen";
@@ -22,12 +22,14 @@ import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak } from "./ut
 import type {
   Puzzle,
   Screen,
+  NavNode,
   CompletionStatus,
   Medal,
   CompletedRow,
   SubmitWordData,
   PairStreak,
   GameMode,
+  ResultData,
   DailyHeatState,
   DailyWordMeta,
   DifficultyBreakdown,
@@ -36,21 +38,22 @@ import type {
 export default function App() {
   const { user, profile, loading, needsUsername, signOut, isWordMaster, isEditor } = useAuth();
 
-  const [screen, setScreen] = useState<Screen>("select");
-  const [selectedPuzzle, setSelectedPuzzle] = useState<Puzzle | null>(null);
-  const [resultData, setResultData] = useState<{
-    totalGuesses: number;
-    medal: Medal | null;
-    usedClue: boolean;
-    magnetsUsed: number;
-    rows: CompletedRow[];
-  } | null>(null);
+  // Navigation back-stack. The top node is the current screen; popping returns
+  // one level instead of always dumping to "select".
+  const [stack, setStack] = useState<NavNode[]>([{ screen: "select" }]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const top = stack[stack.length - 1];
+  const screen: Screen = top.screen;
+  const selectedPuzzle = top.puzzle ?? null;
+  const resultData = top.resultData ?? null;
+  const gameMode: GameMode = top.gameMode ?? "friendly";
+  const submittedPuzzleId = top.submittedPuzzleId ?? null;
+  const canBack = stack.length > 1;
+
   const [completedPuzzles, setCompletedPuzzles] = useState<
     Record<string, CompletionStatus>
   >({});
-
-  // Game mode — tracks whether the current game is daily or friendly
-  const [gameMode, setGameMode] = useState<GameMode>("friendly");
 
   // Daily Heat state — async fetch from Supabase
   const [dailyWordMeta, setDailyWordMeta] = useState<DailyWordMeta | null>(null);
@@ -75,7 +78,6 @@ export default function App() {
       else localStorage.removeItem("hw-selected-group");
     } catch { /* ignore */ }
   };
-  const [submittedPuzzleId, setSubmittedPuzzleId] = useState<string | null>(null);
 
   // Deep link: extract puzzle ID from URL path (e.g. /play/{uuid})
   const [deepLinkPuzzleId, setDeepLinkPuzzleId] = useState<string | null>(() => {
@@ -85,6 +87,60 @@ export default function App() {
 
   // Streaks data — indexed by partner_id for fast lookup
   const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
+
+  // ============================================================
+  // Navigation primitives — the back-stack mirrors browser history
+  // via a `depth` marker stored on each history entry. The root
+  // entry has no state (depth 1). Browser/hardware back fires
+  // popstate, which trims the stack to the target entry's depth, so
+  // in-app back and device back share one code path.
+  // ============================================================
+  const navigate = useCallback((node: NavNode) => {
+    setStack((s) => {
+      const next = [...s, node];
+      try { window.history.pushState({ depth: next.length }, ""); } catch { /* ignore */ }
+      return next;
+    });
+    setDrawerOpen(false);
+  }, []);
+
+  // Replace the current screen instead of stacking on top of it. Used for
+  // terminal screens (play → result, submit → submitted) so "back" returns to
+  // what came before the action, not to the finished game / form.
+  const replaceWith = useCallback((node: NavNode) => {
+    setStack((s) => {
+      const next = [...s.slice(0, -1), node];
+      try { window.history.replaceState({ depth: next.length }, ""); } catch { /* ignore */ }
+      return next;
+    });
+    setDrawerOpen(false);
+  }, []);
+
+  const back = useCallback(() => {
+    setDrawerOpen(false);
+    // Delegate to the browser so device/back-gesture and the in-app button
+    // share the popstate path. Guarded by canBack at the call site.
+    if (stack.length > 1) window.history.back();
+  }, [stack.length]);
+
+  const goHome = useCallback(() => {
+    setDrawerOpen(false);
+    if (stack.length > 1) window.history.go(-(stack.length - 1));
+  }, [stack.length]);
+
+  // popstate: trim the stack to the depth of the entry we landed on.
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      const depth =
+        e.state && typeof (e.state as { depth?: number }).depth === "number"
+          ? (e.state as { depth: number }).depth
+          : 1;
+      setStack((s) => (depth >= s.length ? s : s.slice(0, Math.max(1, depth))));
+      setDrawerOpen(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const fetchStreaks = useCallback(async () => {
     if (!user) return;
@@ -192,16 +248,18 @@ export default function App() {
     }
   }, [user, fetchPuzzles, fetchGroups, fetchStreaks, refreshDailyWord]);
 
-  // Handle hardware/browser back button — navigate to select screen
+  // When we return to the home list (from anywhere), refresh the data that may
+  // have changed while away — completed status, streaks, daily heat. Replaces
+  // the old handleBack() refresh now that "back" just pops the stack.
+  const prevScreenRef = useRef<Screen>("select");
   useEffect(() => {
-    const onPopState = () => {
-      setScreen("select");
-      setSelectedPuzzle(null);
-      setResultData(null);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+    if (prevScreenRef.current !== "select" && screen === "select" && user) {
+      fetchPuzzles();
+      fetchStreaks();
+      if (dailyWordMeta) setDailyState(computeDailyHeatState(dailyWordMeta.scheduled_date));
+    }
+    prevScreenRef.current = screen;
+  }, [screen, user, fetchPuzzles, fetchStreaks, dailyWordMeta]);
 
   // Deep link: auto-navigate to a puzzle when opened via /play/{id}
   useEffect(() => {
@@ -209,7 +267,7 @@ export default function App() {
 
     const navigateToDeepLink = async () => {
       // Clean the URL so refreshing doesn't re-trigger
-      window.history.replaceState({}, "", "/");
+      window.history.replaceState({ depth: 1 }, "", "/");
 
       // First check if puzzle is in the already-loaded list
       let puzzle = puzzles.find((p) => p.id === deepLinkPuzzleId);
@@ -245,9 +303,7 @@ export default function App() {
         // Check if already completed — go to review instead
         const status = completedPuzzles[puzzle.id];
         if (status && status !== "submitted") {
-          setSelectedPuzzle(puzzle);
-          setScreen("review");
-          window.history.pushState({ screen: "review" }, "");
+          navigate({ screen: "review", puzzle });
         } else {
           handleSelect(puzzle);
         }
@@ -277,18 +333,11 @@ export default function App() {
       hasAttempted: false,
       isPublic: true,
     };
-    setGameMode("daily");
-    setSelectedPuzzle(dailyPuzzle);
-    setResultData(null);
-    setScreen("play");
-    window.history.pushState({ screen: "play" }, "");
+    navigate({ screen: "play", puzzle: dailyPuzzle, gameMode: "daily", resultData: null });
   };
 
-  const handleSelect = (p: Puzzle) => {
-    setSelectedPuzzle(p);
-    setResultData(null);
-    setScreen("play");
-    window.history.pushState({ screen: "play" }, "");
+  const handleSelect = (p: Puzzle, mode: GameMode = "friendly") => {
+    navigate({ screen: "play", puzzle: p, gameMode: mode, resultData: null });
   };
 
   const handleComplete = async (
@@ -300,16 +349,17 @@ export default function App() {
     revealedWord?: string,
     revealedDefinition?: string,
   ) => {
-    setResultData({ totalGuesses, medal, usedClue, magnetsUsed, rows });
+    const rd: ResultData = { totalGuesses, medal, usedClue, magnetsUsed, rows };
+    let finalPuzzle = selectedPuzzle;
 
     if (gameMode === "daily") {
-      // Update the selected puzzle with the revealed word/definition from server
+      // Update the puzzle with the revealed word/definition from the server
       if (revealedWord && selectedPuzzle) {
-        setSelectedPuzzle({
+        finalPuzzle = {
           ...selectedPuzzle,
           word: revealedWord,
           definition: revealedDefinition || selectedPuzzle.definition,
-        });
+        };
       }
 
       // Daily mode — save to localStorage, update streak
@@ -345,31 +395,21 @@ export default function App() {
           .eq("id", selectedPuzzle.id)
           .single();
         if (data) {
-          setSelectedPuzzle({
+          finalPuzzle = {
             ...selectedPuzzle,
             word: (data.word as string) || selectedPuzzle.word,
             definition: (data.definition as string) || "",
             clue: (data.clue as string) || null,
             context: (data.inspo as string) || null,
             creator: (data.creator_display_name as string) || (data.creator_username as string) || selectedPuzzle.creator,
-          });
+          };
         }
       }
     }
-    setScreen("result");
-    window.history.pushState({ screen: "result" }, "");
-  };
 
-  const handleBack = () => {
-    setScreen("select");
-    setSelectedPuzzle(null);
-    setResultData(null);
-    setGameMode("friendly");
-    if (dailyWordMeta) {
-      setDailyState(computeDailyHeatState(dailyWordMeta.scheduled_date));
-    }
-    fetchPuzzles(); // Refresh puzzle list
-    fetchStreaks(); // Refresh streaks (may have changed after playing)
+    // Result replaces the game board on the stack, so "back" returns to the
+    // list (or, later, the puzzle detail) rather than the finished board.
+    replaceWith({ screen: "result", puzzle: finalPuzzle, resultData: rd, gameMode });
   };
 
   const handleSubmitWord = (data: SubmitWordData) => {
@@ -394,16 +434,257 @@ export default function App() {
       ...prev,
       [newPuzzle.id]: submitted,
     }));
-    setScreen("submitted");
-    window.history.pushState({ screen: "submitted" }, "");
-    setSelectedPuzzle(newPuzzle);
-    setSubmittedPuzzleId(data.puzzleId);
+    // Share screen replaces the submit form on the stack.
+    replaceWith({ screen: "submitted", puzzle: newPuzzle, submittedPuzzleId: data.puzzleId });
     // Refresh from server after a moment
     setTimeout(fetchPuzzles, 1000);
   };
 
+  const currentGroupName = groups.find((g) => g.id === selectedGroupId)?.name;
+
+  // ===== app bar (authenticated, non-play screens) =====
+  const appBar = (
+    <div
+      className="relative z-[2] shrink-0 flex items-center justify-between"
+      style={{ padding: "16px 16px 10px" }}
+    >
+      <div className="flex items-center" style={{ width: "64px" }}>
+        {canBack && (
+          <button
+            onClick={back}
+            aria-label="Back"
+            className="font-body flex items-center"
+            style={{
+              gap: "5px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "8px",
+              padding: "7px 10px",
+              color: "rgba(255,255,255,0.55)",
+              fontSize: "13px",
+              cursor: "pointer",
+            }}
+          >
+            <span style={{ fontSize: "15px", lineHeight: 1 }}>&#8592;</span>
+          </button>
+        )}
+      </div>
+      <button
+        onClick={goHome}
+        className="font-display"
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "18px",
+          fontWeight: 800,
+          letterSpacing: "-0.01em",
+          backgroundImage: "linear-gradient(135deg,#f5f0e8,#ffb43c)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+        }}
+      >
+        Heated Wordplay
+      </button>
+      <div className="flex justify-end" style={{ width: "64px" }}>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Menu"
+          className="flex flex-col items-end"
+          style={{
+            gap: "4px",
+            background: "rgba(255,180,60,0.06)",
+            border: "1px solid rgba(255,180,60,0.14)",
+            borderRadius: "8px",
+            padding: "9px 10px",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ display: "block", width: "16px", height: "2px", borderRadius: "2px", background: "rgba(255,180,60,0.85)" }} />
+          <span style={{ display: "block", width: "11px", height: "2px", borderRadius: "2px", background: "rgba(255,180,60,0.85)" }} />
+          <span style={{ display: "block", width: "16px", height: "2px", borderRadius: "2px", background: "rgba(255,180,60,0.85)" }} />
+        </button>
+      </div>
+    </div>
+  );
+
+  // ===== brand bar (unauthenticated / loading screens) =====
+  const brandBar = (
+    <div className="text-center relative z-[1] shrink-0" style={{ padding: "28px 20px 8px" }}>
+      <h1
+        className="font-display"
+        style={{
+          fontSize: "clamp(22px, 6vw, 30px)",
+          fontWeight: 800,
+          margin: 0,
+          background: "linear-gradient(135deg, #f5f0e8, #ffb43c)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        Heated Wordplay
+      </h1>
+      <div
+        className="font-mono uppercase tracking-[0.15em]"
+        style={{ fontSize: "11px", color: "rgba(255,180,60,0.35)", marginTop: "4px" }}
+      >
+        All the words she said, running through my head
+      </div>
+    </div>
+  );
+
+  // ===== drawer menu =====
+  const drawerItemStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    textAlign: "left",
+    width: "100%",
+    padding: "13px 12px",
+    borderRadius: "10px",
+    cursor: "pointer",
+    background: "none",
+    border: "1px solid transparent",
+    fontSize: "15px",
+    fontWeight: 500,
+  };
+  const drawerMainItems: Array<{ icon: string; label: string; screen: Screen }> = [
+    { icon: "📊", label: "Your stats", screen: "stats" },
+    { icon: "👤", label: "People", screen: "people" },
+    { icon: "👥", label: "Groups", screen: "groups" },
+  ];
+  const drawerRoleItems: Array<{ icon: string; label: string; screen: Screen }> = [
+    ...(isWordMaster ? [{ icon: "🔥", label: "Daily Pool", screen: "wordmaster" as Screen }] : []),
+    ...(isEditor ? [{ icon: "📅", label: "Schedule", screen: "editor-schedule" as Screen }] : []),
+  ];
+
+  const drawer = drawerOpen ? (
+    <div className="absolute inset-0 z-[20]">
+      <div
+        onClick={() => setDrawerOpen(false)}
+        style={{ position: "absolute", inset: 0, background: "rgba(8,6,4,0.6)", animation: "scrimIn .2s ease" }}
+      />
+      <div
+        className="flex flex-col"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "78%",
+          maxWidth: "300px",
+          background: "linear-gradient(180deg,#1a1410,#121016)",
+          borderLeft: "1px solid rgba(255,180,60,0.12)",
+          boxShadow: "-20px 0 50px rgba(0,0,0,0.5)",
+          animation: "drawerIn .22s cubic-bezier(0.4,0,0.2,1)",
+          padding: "22px 16px",
+        }}
+      >
+        <div className="flex items-center justify-between" style={{ padding: "0 6px 18px" }}>
+          <div>
+            <div className="font-body" style={{ fontSize: "15px", fontWeight: 600, color: "#f5f0e8" }}>
+              {profile?.display_name || profile?.username || "You"}
+            </div>
+            <div className="font-mono" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>
+              @{profile?.username}{currentGroupName ? ` · ${currentGroupName}` : ""}
+            </div>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close menu"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "none",
+              borderRadius: "8px",
+              width: "30px",
+              height: "30px",
+              fontSize: "16px",
+              color: "rgba(255,255,255,0.5)",
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex flex-col" style={{ gap: "2px" }}>
+          {drawerMainItems.map((m) => (
+            <button
+              key={m.screen}
+              onClick={() => navigate({ screen: m.screen })}
+              className="font-body"
+              style={{ ...drawerItemStyle, color: "rgba(245,240,232,0.85)" }}
+            >
+              <span style={{ fontSize: "17px", width: "22px", textAlign: "center" }}>{m.icon}</span>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {drawerRoleItems.length > 0 && (
+          <>
+            <div style={{ height: "1px", background: "rgba(255,255,255,0.07)", margin: "14px 6px" }} />
+            <div
+              className="font-mono uppercase tracking-[0.14em]"
+              style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", padding: "0 12px 8px" }}
+            >
+              WordMaster
+            </div>
+            <div className="flex flex-col" style={{ gap: "2px" }}>
+              {drawerRoleItems.map((m) => (
+                <button
+                  key={m.screen}
+                  onClick={() => navigate({ screen: m.screen })}
+                  className="font-body"
+                  style={{ ...drawerItemStyle, color: "rgba(255,140,40,0.6)" }}
+                >
+                  <span style={{ fontSize: "17px", width: "22px", textAlign: "center" }}>{m.icon}</span>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={() => { setDrawerOpen(false); signOut(); }}
+          className="font-body"
+          style={{
+            marginTop: "auto",
+            textAlign: "left",
+            width: "100%",
+            padding: "13px 12px",
+            borderRadius: "10px",
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            color: "rgba(255,255,255,0.3)",
+            fontSize: "14px",
+          }}
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   // Shell wrapper (used by all screens)
-  const shell = (content: React.ReactNode, showTitle = true, hideOverflow = false, maxWidth = "520px") => (
+  const shell = (
+    content: React.ReactNode,
+    {
+      bar = null,
+      overlay = null,
+      hideOverflow = false,
+      maxWidth = "520px",
+    }: {
+      bar?: React.ReactNode;
+      overlay?: React.ReactNode;
+      hideOverflow?: boolean;
+      maxWidth?: string;
+    } = {},
+  ) => (
     <div className="h-screen w-full flex justify-center" style={{ background: "#0f0d0b" }}>
       <div
         className="h-full flex flex-col relative overflow-hidden w-full"
@@ -423,41 +704,7 @@ export default function App() {
           }}
         />
 
-        {/* Title bar */}
-        {showTitle && (
-          <div
-            className="text-center relative z-[1] shrink-0"
-            style={{ padding: "28px 20px 8px" }}
-          >
-            <h1
-              onClick={() => screen !== "select" && user && handleBack()}
-              className="font-display"
-              style={{
-                fontSize: "clamp(22px, 6vw, 30px)",
-                fontWeight: 800,
-                margin: 0,
-                background: "linear-gradient(135deg, #f5f0e8, #ffb43c)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.01em",
-                cursor:
-                  screen !== "select" && user ? "pointer" : "default",
-              }}
-            >
-              Heated Wordplay
-            </h1>
-            <div
-              className="font-mono uppercase tracking-[0.15em]"
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,180,60,0.35)",
-                marginTop: "4px",
-              }}
-            >
-              All the words she said, running through my head
-            </div>
-          </div>
-        )}
+        {bar}
 
         {/* Main content */}
         <div
@@ -466,6 +713,8 @@ export default function App() {
         >
           {content}
         </div>
+
+        {overlay}
       </div>
     </div>
   );
@@ -484,152 +733,67 @@ export default function App() {
           Loading...
         </div>
       </div>,
+      { bar: brandBar },
     );
   }
 
   // Not authenticated
   if (!user) {
-    return shell(<AuthScreen />);
+    return shell(<AuthScreen />, { bar: brandBar });
   }
 
   // Needs username
   if (needsUsername) {
-    return shell(<UsernameScreen />);
+    return shell(<UsernameScreen />, { bar: brandBar });
   }
 
   // Authenticated — game screens
   const playMaxWidth = screen === "play" ? "100%" : "520px";
   return shell(
     <>
-      {/* User header (on select screen) */}
+      {/* User / group row (on select screen) */}
       {screen === "select" && (
         <div
-          className="flex items-center justify-between px-5 pb-2"
-          style={{ marginTop: "-4px" }}
+          className="flex items-center gap-2 px-5 pb-2"
+          style={{ marginTop: "-2px" }}
         >
-          <div className="flex items-center gap-2">
+          <span
+            className="font-mono"
+            style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}
+          >
+            @{profile?.username}
+          </span>
+          {groups.length > 1 && (
+            <select
+              value={selectedGroupId || ""}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="font-body"
+              style={{
+                fontSize: "12px",
+                color: "rgba(255,180,60,0.7)",
+                background: "rgba(255,180,60,0.08)",
+                border: "1px solid rgba(255,180,60,0.15)",
+                borderRadius: "6px",
+                padding: "3px 8px",
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {groups.length === 1 && (
             <span
-              className="font-mono"
-              style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}
+              className="font-body"
+              style={{ fontSize: "12px", color: "rgba(255,180,60,0.5)" }}
             >
-              @{profile?.username}
+              · {groups[0].name}
             </span>
-            {groups.length > 1 && (
-              <select
-                value={selectedGroupId || ""}
-                onChange={(e) => setSelectedGroupId(e.target.value)}
-                className="font-body"
-                style={{
-                  fontSize: "12px",
-                  color: "rgba(255,180,60,0.7)",
-                  background: "rgba(255,180,60,0.08)",
-                  border: "1px solid rgba(255,180,60,0.15)",
-                  borderRadius: "6px",
-                  padding: "3px 8px",
-                  cursor: "pointer",
-                  outline: "none",
-                }}
-              >
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {groups.length === 1 && (
-              <span
-                className="font-body"
-                style={{ fontSize: "12px", color: "rgba(255,180,60,0.5)" }}
-              >
-                · {groups[0].name}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setScreen("people"); window.history.pushState({ screen: "people" }, ""); }}
-              className="font-body"
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,255,255,0.3)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              👤 People
-            </button>
-            <button
-              onClick={() => { setScreen("stats"); window.history.pushState({ screen: "stats" }, ""); }}
-              className="font-body"
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,255,255,0.3)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              📊 Stats
-            </button>
-            <button
-              onClick={() => { setScreen("groups"); window.history.pushState({ screen: "groups" }, ""); }}
-              className="font-body"
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,255,255,0.3)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              👥 Groups
-            </button>
-            {isWordMaster && (
-              <button
-                onClick={() => { setScreen("wordmaster"); window.history.pushState({ screen: "wordmaster" }, ""); }}
-                className="font-body"
-                style={{
-                  fontSize: "11px",
-                  color: "rgba(255,140,40,0.5)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                🔥 Pool
-              </button>
-            )}
-            {isEditor && (
-              <button
-                onClick={() => { setScreen("editor-schedule"); window.history.pushState({ screen: "editor-schedule" }, ""); }}
-                className="font-body"
-                style={{
-                  fontSize: "11px",
-                  color: "rgba(255,140,40,0.5)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                📅 Schedule
-              </button>
-            )}
-            <button
-              onClick={signOut}
-              className="font-body"
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,255,255,0.2)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Sign out
-            </button>
-          </div>
+          )}
         </div>
       )}
 
@@ -660,8 +824,8 @@ export default function App() {
                     ? (() => {
                         const g = buildEmojiGrid(dailyState.rows);
                         return dailyState.guesses <= 6
-                          ? `\uD83D\uDD25 Daily Heat\nGot in there in ${dailyState.guesses}/6\n${g}`
-                          : `\uD83D\uDD25 Daily Heat\nThis one got away.\n${g}`;
+                          ? `🔥 Daily Heat\nGot in there in ${dailyState.guesses}/6\n${g}`
+                          : `🔥 Daily Heat\nThis one got away.\n${g}`;
                       })()
                     : undefined}
                 />
@@ -670,13 +834,9 @@ export default function App() {
                 puzzles={puzzles}
                 completedPuzzles={completedPuzzles}
                 streaks={streaks}
-                onSelect={(p) => { setGameMode("friendly"); handleSelect(p); }}
-                onReview={(p) => {
-                  setSelectedPuzzle(p);
-                  setScreen("review");
-                  window.history.pushState({ screen: "review" }, "");
-                }}
-                onSubmitWord={() => { setScreen("submit"); window.history.pushState({ screen: "submit" }, ""); }}
+                onSelect={(p) => handleSelect(p)}
+                onReview={(p) => navigate({ screen: "review", puzzle: p })}
+                onSubmitWord={() => navigate({ screen: "submit" })}
               />
               <ActivityFeed
                 groupId={selectedGroupId}
@@ -685,11 +845,8 @@ export default function App() {
                   const puzzle = puzzles.find((p) => p.id === puzzleId);
                   if (puzzle) {
                     if (isCompleted) {
-                      setSelectedPuzzle(puzzle);
-                      setScreen("review");
-                      window.history.pushState({ screen: "review" }, "");
+                      navigate({ screen: "review", puzzle });
                     } else {
-                      setGameMode("friendly");
                       handleSelect(puzzle);
                     }
                   }
@@ -703,7 +860,7 @@ export default function App() {
         <GameBoard
           puzzle={selectedPuzzle}
           onComplete={handleComplete}
-          onBack={handleBack}
+          onBack={back}
           creatorStreak={gameMode === "daily" ? 0 : (selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0)}
           gameMode={gameMode}
         />
@@ -716,7 +873,7 @@ export default function App() {
           usedClue={resultData.usedClue}
           magnetsUsed={resultData.magnetsUsed}
           rows={resultData.rows}
-          onBack={handleBack}
+          onBack={back}
           creatorStreak={gameMode === "daily" ? 0 : (selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0)}
           groupId={selectedGroupId}
           gameMode={gameMode}
@@ -726,7 +883,7 @@ export default function App() {
       {screen === "groups" && (
         <GroupScreen
           manage
-          onReady={() => { fetchGroups(); fetchPuzzles(); setScreen("select"); }}
+          onReady={() => { fetchGroups(); fetchPuzzles(); goHome(); }}
           onSelectPuzzle={async (puzzleId) => {
             // Find puzzle in already-loaded list, or fetch it
             let puzzle = puzzles.find((p) => p.id === puzzleId);
@@ -761,37 +918,37 @@ export default function App() {
         />
       )}
       {screen === "review" && selectedPuzzle && (
-        <ReviewScreen puzzle={selectedPuzzle} onBack={handleBack} groupId={selectedGroupId} />
+        <ReviewScreen puzzle={selectedPuzzle} onBack={back} groupId={selectedGroupId} />
       )}
       {screen === "people" && (
-        <PeopleScreen onBack={handleBack} />
+        <PeopleScreen onBack={back} />
       )}
       {screen === "stats" && (
-        <StatsScreen onBack={handleBack} />
+        <StatsScreen onBack={back} />
       )}
       {screen === "submit" && (
-        <SubmitWord onSubmit={handleSubmitWord} onBack={handleBack} />
+        <SubmitWord onSubmit={handleSubmitWord} onBack={back} />
       )}
       {screen === "submitted" && selectedPuzzle && submittedPuzzleId && (
         <ShareScreen
           puzzle={selectedPuzzle}
           puzzleId={submittedPuzzleId}
           groups={groups}
-          onDone={() => {
-            setSubmittedPuzzleId(null);
-            handleBack();
-          }}
+          onDone={back}
         />
       )}
       {screen === "wordmaster" && (
-        <WordMasterScreen onBack={handleBack} />
+        <WordMasterScreen onBack={back} />
       )}
       {screen === "editor-schedule" && (
-        <EditorScheduleScreen onBack={handleBack} />
+        <EditorScheduleScreen onBack={back} />
       )}
     </>,
-    /* showTitle */ screen !== "play",
-    /* hideOverflow */ screen === "play",
-    /* maxWidth */ playMaxWidth,
+    {
+      bar: screen === "play" ? null : appBar,
+      overlay: drawer,
+      hideOverflow: screen === "play",
+      maxWidth: playMaxWidth,
+    },
   );
 }

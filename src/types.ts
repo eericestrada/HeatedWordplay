@@ -138,6 +138,19 @@ export interface DictionaryEntry {
 
 export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "wordmaster" | "editor-schedule";
 
+/**
+ * One entry in the navigation back-stack. Each node carries the context its
+ * screen needs to render, so popping back to it restores the right puzzle /
+ * result without relying on separate, mutable "current selection" state.
+ */
+export interface NavNode {
+  screen: Screen;
+  puzzle?: Puzzle | null;
+  resultData?: ResultData | null;
+  gameMode?: GameMode;
+  submittedPuzzleId?: string | null;
+}
+
 export interface ConnectedUser {
   user_id: string;
   username: string;
