@@ -25,6 +25,7 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
   const { profile } = useAuth();
   const [data, setData] = useState<H2HData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"yours" | "theirs">("yours");
 
   useEffect(() => {
     if (!profile) return;
@@ -131,19 +132,48 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
         </div>
       )}
 
+      {/* Direction toggle */}
+      <div
+        className="flex"
+        style={{ gap: "4px", background: "rgba(255,255,255,0.03)", borderRadius: "10px", padding: "3px", marginBottom: "16px" }}
+      >
+        {(["yours", "theirs"] as const).map((key) => {
+          const active = view === key;
+          const label = key === "yours" ? "Your words" : `${partnerName.split(" ")[0]}'s words`;
+          return (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className="font-body flex-1 rounded-lg"
+              style={{
+                border: "none",
+                padding: "9px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: active ? "rgba(255,180,60,0.12)" : "transparent",
+                color: active ? "rgba(255,180,60,0.95)" : "rgba(255,255,255,0.5)",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {loading ? (
         <div className="font-body text-center" style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", padding: "20px" }}>
           Loading…
         </div>
-      ) : (
+      ) : view === "yours" ? (
         <>
-          {/* Your words to them */}
           {sectionHeader(`Your words to ${partnerName}`, yoursSolved, yours.length)}
-          <div className="flex flex-col" style={{ gap: "6px", marginBottom: "20px" }}>
+          <div className="flex flex-col" style={{ gap: "6px" }}>
             {yours.length > 0 ? yours.map(wordRow) : emptyNote(`You haven't sent ${partnerName} a word they've played yet.`)}
           </div>
-
-          {/* Their words to you */}
+        </>
+      ) : (
+        <>
           {sectionHeader(`${partnerName}'s words to you`, theirsSolved, theirs.length)}
           <div className="flex flex-col" style={{ gap: "6px" }}>
             {theirs.length > 0 ? theirs.map(wordRow) : emptyNote(`${partnerName} hasn't sent you a word you've played yet.`)}

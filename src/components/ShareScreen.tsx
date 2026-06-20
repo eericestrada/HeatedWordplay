@@ -702,7 +702,7 @@ export default function ShareScreen({
               letterSpacing: "0.04em",
             }}
           >
-            {saved || !hasShares ? "Back to puzzles" : "Skip sharing"}
+            {saved ? "Back to puzzles" : !hasShares ? "Leave as draft & back to puzzles" : "Skip sharing"}
           </button>
         )}
       </div>
