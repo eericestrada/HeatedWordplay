@@ -1064,7 +1064,6 @@ export default function App() {
       {screen === "mywords" && (
         <MyWords
           rows={myWordRows}
-          summary={myWordsSummary}
           puzzles={puzzles}
           loading={creatorLoading}
           onOpenPuzzle={(p) => openDetail(p, "results")}

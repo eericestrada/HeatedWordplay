@@ -27,6 +27,9 @@ export interface MyWordRow {
   puzzleId: string;
   word: string;
   createdAt: string;
+  complexity: number;
+  /** Average guesses solvers needed; null until the word has been solved. */
+  avgGuesses: number | null;
   plays: number;
   solves: number;
   newSolvers: number;
@@ -56,6 +59,8 @@ export function buildMyWordRows(
       puzzleId: p.puzzle_id,
       word: p.word,
       createdAt: p.created_at,
+      complexity: p.complexity,
+      avgGuesses: p.avg_guesses,
       plays: p.play_count,
       solves: p.solve_count,
       newSolvers: Math.max(0, p.solve_count - (seen[p.puzzle_id] ?? 0)),

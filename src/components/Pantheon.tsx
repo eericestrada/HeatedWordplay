@@ -56,17 +56,11 @@ export default function Pantheon({ onOpenPuzzle }: PantheonProps) {
 
   return (
     <div style={{ marginBottom: "24px" }}>
-      <div
-        className="font-display text-center"
-        style={{ fontSize: "20px", fontWeight: 800, color: "#f5f0e8", letterSpacing: "0.02em", marginBottom: "2px" }}
-      >
-        🏛️ The Pantheon
+      <div className="font-body text-center" style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", margin: "2px 0 4px" }}>
+        Why do you hurt people so?
       </div>
-      <div className="font-body text-center" style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginBottom: "4px" }}>
-        Your words, ranked by sheer struggle
-      </div>
-      <div className="font-mono text-center" style={{ fontSize: "9px", color: "rgba(255,255,255,0.28)", marginBottom: "16px" }}>
-        Torment = dead ends + give-ups, weighted by difficulty
+      <div className="font-mono text-center" style={{ fontSize: "9px", color: "rgba(255,255,255,0.28)", marginBottom: "18px" }}>
+        Torment score is based on dead ends + quitting + failures
       </div>
 
       {/* Champion */}

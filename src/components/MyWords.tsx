@@ -1,12 +1,12 @@
+import { useState } from "react";
 import { formatDate, getDifficultyTier } from "../utils/scoring";
 import { markSeen } from "../utils/myWords";
 import Pantheon from "./Pantheon";
 import type { Puzzle } from "../types";
-import type { MyWordRow, MyWordsSummary } from "../utils/myWords";
+import type { MyWordRow } from "../utils/myWords";
 
 interface MyWordsProps {
   rows: MyWordRow[];
-  summary: MyWordsSummary;
   puzzles: Puzzle[];
   loading: boolean;
   onOpenPuzzle: (puzzle: Puzzle) => void;
@@ -14,15 +14,42 @@ interface MyWordsProps {
   onCreateNew: () => void;
 }
 
+type View = "words" | "pantheon";
+type SortKey = "date" | "avg" | "difficulty";
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "date", label: "Date added" },
+  { key: "avg", label: "Avg tries" },
+  { key: "difficulty", label: "Difficulty" },
+];
+
+// Tier filter chips — keys match getDifficultyTier().label; "all" clears the filter.
+const TIER_CHIPS: { key: string; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "Cake", label: "🍰" },
+  { key: "Easy", label: "✦" },
+  { key: "Medium", label: "⚡" },
+  { key: "Hard", label: "🔥" },
+  { key: "Nightmare", label: "💀" },
+];
+
 export default function MyWords({
   rows,
-  summary,
   puzzles,
   loading,
   onOpenPuzzle,
   onShareDraft,
   onCreateNew,
 }: MyWordsProps) {
+  const [view, setView] = useState<View>("words");
+  const [sort, setSort] = useState<SortKey>("date");
+  const [dir, setDir] = useState<Record<SortKey, "asc" | "desc">>({
+    date: "desc",
+    avg: "desc",
+    difficulty: "desc",
+  });
+  const [tier, setTier] = useState<string>("all");
+
   // Resolve the full Puzzle for navigation (own puzzles are always present in
   // the loaded list, but fall back to a minimal object just in case).
   const resolvePuzzle = (row: MyWordRow): Puzzle => {
@@ -35,15 +62,19 @@ export default function MyWords({
       definition: "",
       clue: null,
       context: null,
-      complexity: 0,
+      complexity: row.complexity,
       submittedAt: row.createdAt.split("T")[0],
       wordLength: row.word.length,
       isPublic: row.isPublic,
     };
   };
 
-  const drafts = rows.filter((r) => r.isDraft);
-  const active = rows.filter((r) => !r.isDraft);
+  // A row's difficulty tier — only v1-scored words (with a breakdown) get one,
+  // consistent with the per-row tier icons elsewhere; legacy words return null.
+  const tierOf = (row: MyWordRow) => {
+    const found = puzzles.find((p) => String(p.id) === row.puzzleId);
+    return found?.difficultyBreakdown ? getDifficultyTier(row.complexity) : null;
+  };
 
   const openShared = (row: MyWordRow) => {
     markSeen(row.puzzleId, row.solves);
@@ -56,241 +87,305 @@ export default function MyWords({
     if (found) onOpenPuzzle(found);
   };
 
-  const summaryCard = (value: number, label: string, highlight = false) => (
-    <div
-      className="text-center rounded-[10px]"
+  const pickSort = (key: SortKey) => {
+    if (sort === key) {
+      setDir((d) => ({ ...d, [key]: d[key] === "desc" ? "asc" : "desc" }));
+    } else {
+      setSort(key);
+    }
+  };
+
+  const drafts = rows.filter((r) => r.isDraft);
+  const active = rows.filter((r) => !r.isDraft);
+
+  // Shared list — tier filter, then sort in the chosen direction.
+  const filtered = tier === "all" ? active : active.filter((r) => tierOf(r)?.label === tier);
+  const d = dir[sort] === "desc" ? -1 : 1;
+  const sortVal = (r: MyWordRow) =>
+    sort === "date"
+      ? new Date(r.createdAt).getTime()
+      : sort === "avg"
+        ? r.avgGuesses ?? -1
+        : r.complexity;
+  const shared = [...filtered].sort((a, b) => (sortVal(a) - sortVal(b)) * d);
+
+  const sortNote = {
+    date: dir.date === "desc" ? "newest first" : "oldest first",
+    avg: dir.avg === "desc" ? "hardest to solve first" : "easiest to solve first",
+    difficulty: dir.difficulty === "desc" ? "toughest tier first" : "easiest tier first",
+  }[sort];
+
+  // ── Segmented view toggle ──
+  const segColor = (on: boolean) => (on ? "rgba(255,180,60,0.95)" : "rgba(255,255,255,0.45)");
+  const segBg = (on: boolean) => (on ? "rgba(255,180,60,0.14)" : "transparent");
+  const segBtn = (label: string, onClick: () => void, on: boolean) => (
+    <button
+      onClick={onClick}
+      className="hwbtn font-body flex-1 rounded-lg"
       style={{
-        background: highlight ? "rgba(255,180,60,0.08)" : "rgba(255,255,255,0.03)",
-        border: highlight ? "1px solid rgba(255,180,60,0.15)" : "1px solid rgba(255,255,255,0.05)",
-        padding: "12px 8px",
+        border: "none",
+        padding: "10px 6px",
+        fontSize: "13px",
+        fontWeight: 600,
+        cursor: "pointer",
+        background: segBg(on),
+        color: segColor(on),
       }}
     >
-      <div
-        className="font-mono"
-        style={{ fontSize: "20px", fontWeight: 700, color: highlight ? "rgba(255,180,60,0.95)" : "#f5f0e8" }}
-      >
-        {value}
-      </div>
-      <div
-        className="font-body"
-        style={{ fontSize: "10px", color: highlight ? "rgba(255,180,60,0.6)" : "rgba(255,255,255,0.3)", marginTop: "2px" }}
-      >
-        {label}
-      </div>
-    </div>
+      {label}
+    </button>
   );
 
   return (
     <div className="max-w-[480px] mx-auto" style={{ padding: "8px 20px 40px", animation: "fadeUp 0.35s ease" }}>
-      <div className="font-display" style={{ fontSize: "26px", fontWeight: 700, color: "#f5f0e8", marginBottom: "4px" }}>
+      <div className="font-display" style={{ fontSize: "26px", fontWeight: 700, color: "#f5f0e8", marginBottom: "14px" }}>
         Your words
       </div>
-      <div className="font-body" style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", marginBottom: "20px" }}>
-        Tap a word to share it or see who's been guessing.
-      </div>
 
-      {/* Summary strip */}
-      <div className="grid" style={{ gridTemplateColumns: "repeat(3,1fr)", gap: "8px", marginBottom: "20px" }}>
-        {summaryCard(summary.words, "words")}
-        {summaryCard(summary.plays, "plays")}
-        {summaryCard(summary.newSolvers, "new solvers", true)}
-      </div>
-
-      {/* The Pantheon — words ranked by Torment (renders nothing until one bites) */}
-      <Pantheon onOpenPuzzle={openById} />
-
-      <button
-        onClick={onCreateNew}
-        className="font-body w-full rounded-[10px]"
-        style={{
-          border: "1px dashed rgba(255,180,60,0.25)",
-          background: "rgba(255,180,60,0.04)",
-          padding: "13px",
-          fontSize: "15px",
-          fontWeight: 600,
-          color: "rgba(255,180,60,0.7)",
-          cursor: "pointer",
-          marginBottom: "20px",
-        }}
+      {/* View toggle: + New (routes to create) · My Words · Pantheon */}
+      <div
+        className="flex"
+        style={{ gap: "4px", background: "rgba(255,255,255,0.04)", borderRadius: "11px", padding: "4px", marginBottom: "18px" }}
       >
-        + Create a new word
-      </button>
+        {segBtn("+ New", onCreateNew, false)}
+        {segBtn("My Words", () => setView("words"), view === "words")}
+        {segBtn("🏛️ Pantheon", () => setView("pantheon"), view === "pantheon")}
+      </div>
 
-      {loading && rows.length === 0 && (
-        <div className="font-body text-center" style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", padding: "20px" }}>
-          Loading your words...
-        </div>
-      )}
-
-      {!loading && rows.length === 0 && (
-        <div
-          className="font-body text-center rounded-xl"
-          style={{
-            fontSize: "13px",
-            color: "rgba(255,255,255,0.4)",
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid rgba(255,255,255,0.04)",
-            padding: "28px 16px",
-          }}
-        >
-          You haven't created any words yet. Make one and share it — then watch
-          who tries to crack it.
-        </div>
-      )}
-
-      {/* Drafts — private until shared */}
-      {drafts.length > 0 && (
+      {view === "pantheon" ? (
+        <Pantheon onOpenPuzzle={openById} />
+      ) : (
         <>
-          <div
-            className="font-mono uppercase tracking-[0.12em]"
-            style={{ fontSize: "10px", color: "rgba(255,140,40,0.65)", marginBottom: "10px" }}
-          >
-            Drafts · only you can see these
-          </div>
-          <div className="flex flex-col" style={{ gap: "10px", marginBottom: "24px" }}>
-            {drafts.map((row) => {
-              const puzzle = resolvePuzzle(row);
-              const tier = puzzle.difficultyBreakdown ? getDifficultyTier(puzzle.complexity) : null;
-              return (
-                <div
-                  key={row.puzzleId}
-                  className="flex items-center"
-                  style={{
-                    gap: "12px",
-                    border: "1px dashed rgba(255,180,60,0.3)",
-                    background: "rgba(255,180,60,0.04)",
-                    borderRadius: "12px",
-                    padding: "14px 16px",
-                  }}
-                >
-                  <button
-                    onClick={() => onShareDraft(puzzle)}
-                    className="font-body flex-1 min-w-0 text-left"
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                  >
-                    <span className="flex items-center" style={{ gap: "8px" }}>
-                      <span
-                        className="font-display"
-                        style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
-                      >
-                        {row.word.toUpperCase()}
-                      </span>
-                      {tier && (
-                        <span title={tier.label} aria-label={tier.label} style={{ fontSize: "13px", lineHeight: 1 }}>
-                          {tier.icon}
-                        </span>
-                      )}
-                    </span>
-                    <div className="font-body" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "3px" }}>
-                      Draft · created {formatDate(row.createdAt.split("T")[0])}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => onShareDraft(puzzle)}
-                    className="font-body shrink-0 rounded-lg"
-                    style={{
-                      padding: "9px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      background: "rgba(255,180,60,0.12)",
-                      border: "1px solid rgba(255,180,60,0.3)",
-                      color: "rgba(255,180,60,0.9)",
-                    }}
-                  >
-                    Share
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+          {loading && rows.length === 0 && (
+            <div className="font-body text-center" style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", padding: "20px" }}>
+              Loading your words...
+            </div>
+          )}
 
-      {/* Shared / live words */}
-      {active.length > 0 && (
-        <>
-          <div
-            className="font-mono uppercase tracking-[0.12em]"
-            style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginBottom: "10px" }}
-          >
-            Shared
-          </div>
-          <div className="flex flex-col" style={{ gap: "10px" }}>
-            {active.map((row) => {
-              const rate = row.plays > 0 ? Math.round((row.solves / row.plays) * 100) : null;
-              const rateColor =
-                rate === null
-                  ? "rgba(255,255,255,0.3)"
-                  : rate >= 60
-                    ? "rgba(45,138,78,0.9)"
-                    : rate >= 30
-                      ? "rgba(255,180,60,0.85)"
-                      : "rgba(255,120,120,0.85)";
-              const shareLabel = row.isPublic ? "🌐 Public" : "Shared";
-              const shareColor = row.isPublic ? "rgba(26,158,158,0.8)" : "rgba(255,180,60,0.6)";
-              const borderColor = row.newSolvers > 0 ? "rgba(255,180,60,0.25)" : "rgba(255,255,255,0.08)";
-              const puzzle = resolvePuzzle(row);
-              const tier = puzzle.difficultyBreakdown ? getDifficultyTier(puzzle.complexity) : null;
+          {!loading && rows.length === 0 && (
+            <div
+              className="font-body text-center rounded-xl"
+              style={{
+                fontSize: "13px",
+                color: "rgba(255,255,255,0.4)",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.04)",
+                padding: "28px 16px",
+              }}
+            >
+              You haven't created any words yet. Tap{" "}
+              <span style={{ color: "rgba(255,180,60,0.8)" }}>+ New</span> to make one and share it —
+              then watch who tries to crack it.
+            </div>
+          )}
 
-              return (
-                <button
-                  key={row.puzzleId}
-                  onClick={() => openShared(row)}
-                  className="font-body w-full text-left rounded-xl"
-                  style={{
-                    border: `1px solid ${borderColor}`,
-                    background: "rgba(255,255,255,0.02)",
-                    padding: "15px 16px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center min-w-0" style={{ gap: "10px" }}>
-                      <span
-                        className="font-display"
-                        style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
+          {/* Drafts — private until shared */}
+          {drafts.length > 0 && (
+            <>
+              <div
+                className="font-mono uppercase tracking-[0.12em]"
+                style={{ fontSize: "10px", color: "rgba(255,140,40,0.65)", marginBottom: "10px" }}
+              >
+                Drafts · only you can see these
+              </div>
+              <div className="flex flex-col" style={{ gap: "9px", marginBottom: "24px" }}>
+                {drafts.map((row) => {
+                  const puzzle = resolvePuzzle(row);
+                  const tierBadge = tierOf(row);
+                  return (
+                    <div
+                      key={row.puzzleId}
+                      className="flex items-center"
+                      style={{
+                        gap: "12px",
+                        border: "1px dashed rgba(255,180,60,0.3)",
+                        background: "rgba(255,180,60,0.04)",
+                        borderRadius: "12px",
+                        padding: "13px 15px",
+                      }}
+                    >
+                      <button
+                        onClick={() => onShareDraft(puzzle)}
+                        className="font-body flex-1 min-w-0 text-left"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
                       >
-                        {row.word.toUpperCase()}
-                      </span>
-                      {tier && (
-                        <span title={tier.label} aria-label={tier.label} style={{ fontSize: "13px", lineHeight: 1, flexShrink: 0 }}>
-                          {tier.icon}
-                        </span>
-                      )}
-                      {row.newSolvers > 0 && (
                         <span
-                          className="font-mono"
-                          style={{
-                            fontSize: "9px",
-                            fontWeight: 600,
-                            color: "#0f0d0b",
-                            background: "rgba(255,180,60,0.95)",
-                            padding: "2px 6px",
-                            borderRadius: "20px",
-                          }}
+                          className="font-display"
+                          style={{ fontSize: "17px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
                         >
-                          {row.newSolvers} new
+                          {row.word.toUpperCase()}
                         </span>
-                      )}
+                        <div className="font-body" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "2px" }}>
+                          Draft · {formatDate(row.createdAt.split("T")[0])}
+                          {tierBadge && ` · ${tierBadge.icon} ${tierBadge.label}`}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => onShareDraft(puzzle)}
+                        className="font-body shrink-0 rounded-lg"
+                        style={{
+                          padding: "8px 15px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          background: "rgba(255,180,60,0.12)",
+                          border: "1px solid rgba(255,180,60,0.3)",
+                          color: "rgba(255,180,60,0.9)",
+                        }}
+                      >
+                        Share
+                      </button>
                     </div>
-                    <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.25)" }}>{"›"}</span>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Sort + tier filter (apply to Shared) */}
+          {active.length > 0 && (
+            <>
+              <div className="flex items-center" style={{ gap: "7px", marginBottom: "10px", flexWrap: "wrap" }}>
+                <span className="font-mono uppercase" style={{ fontSize: "9px", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)" }}>
+                  Sort
+                </span>
+                {SORTS.map((s) => {
+                  const on = sort === s.key;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => pickSort(s.key)}
+                      className="hwbtn font-body flex items-center"
+                      style={{
+                        borderRadius: "20px",
+                        padding: "5px 11px",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        gap: "4px",
+                        cursor: "pointer",
+                        background: on ? "rgba(255,180,60,0.14)" : "rgba(255,255,255,0.03)",
+                        border: on ? "1px solid rgba(255,180,60,0.35)" : "1px solid rgba(255,255,255,0.08)",
+                        color: on ? "rgba(255,180,60,0.95)" : "rgba(255,255,255,0.55)",
+                      }}
+                    >
+                      {s.label}
+                      {on && <span style={{ fontSize: "9px" }}>{dir[s.key] === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center" style={{ gap: "6px", marginBottom: "18px", flexWrap: "wrap" }}>
+                <span className="font-mono uppercase" style={{ fontSize: "9px", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)" }}>
+                  Tier
+                </span>
+                {TIER_CHIPS.map((t) => {
+                  const on = tier === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => setTier(t.key)}
+                      className="hwbtn font-body"
+                      style={{
+                        borderRadius: "20px",
+                        padding: "5px 10px",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        background: on ? "rgba(255,180,60,0.14)" : "rgba(255,255,255,0.03)",
+                        border: on ? "1px solid rgba(255,180,60,0.35)" : "1px solid rgba(255,255,255,0.08)",
+                        color: on ? "rgba(255,180,60,0.95)" : "rgba(255,255,255,0.55)",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Shared / live words */}
+              <div className="flex items-center justify-between" style={{ marginBottom: "9px" }}>
+                <span className="font-mono uppercase tracking-[0.12em]" style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}>
+                  Shared · {shared.length}
+                </span>
+                <span className="font-mono" style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)" }}>
+                  {sortNote}
+                </span>
+              </div>
+              <div className="flex flex-col" style={{ gap: "9px" }}>
+                {shared.length === 0 ? (
+                  <div
+                    className="font-body text-center rounded-xl"
+                    style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", padding: "18px" }}
+                  >
+                    No words match this filter.
                   </div>
-                  <div className="flex items-center" style={{ gap: "14px", marginTop: "9px" }}>
-                    <span className="font-mono" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
-                      {row.plays} play{row.plays === 1 ? "" : "s"}
-                    </span>
-                    <span className="font-mono" style={{ fontSize: "11px", color: rateColor }}>
-                      {rate === null ? "no plays yet" : `${rate}% solved`}
-                    </span>
-                    <span className="font-body" style={{ fontSize: "11px", color: shareColor }}>
-                      {shareLabel}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                ) : (
+                  shared.map((row) => {
+                    const tierBadge = tierOf(row);
+                    const borderColor = row.newSolvers > 0 ? "rgba(255,180,60,0.3)" : "rgba(255,255,255,0.08)";
+                    return (
+                      <button
+                        key={row.puzzleId}
+                        onClick={() => openShared(row)}
+                        className="font-body w-full text-left rounded-xl"
+                        style={{
+                          border: `1px solid ${borderColor}`,
+                          background: "rgba(255,255,255,0.02)",
+                          padding: "14px 15px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center min-w-0" style={{ gap: "9px" }}>
+                            <span
+                              className="font-display"
+                              style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
+                            >
+                              {row.word.toUpperCase()}
+                            </span>
+                            {tierBadge && (
+                              <span
+                                className="font-mono shrink-0"
+                                style={{ fontSize: "10px", color: tierBadge.color, background: tierBadge.bg, borderRadius: "5px", padding: "2px 7px" }}
+                              >
+                                {tierBadge.icon} {tierBadge.label}
+                              </span>
+                            )}
+                            {row.newSolvers > 0 && (
+                              <span
+                                className="font-mono shrink-0"
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: 600,
+                                  color: "#0f0d0b",
+                                  background: "rgba(255,180,60,0.95)",
+                                  padding: "2px 6px",
+                                  borderRadius: "20px",
+                                }}
+                              >
+                                {row.newSolvers} new
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.25)" }}>{"›"}</span>
+                        </div>
+                        <div className="flex items-center" style={{ gap: "14px", marginTop: "9px" }}>
+                          <span className="font-mono" style={{ fontSize: "11px", color: sort === "date" ? "rgba(255,180,60,0.85)" : "rgba(255,255,255,0.4)" }}>
+                            {formatDate(row.createdAt.split("T")[0])}
+                          </span>
+                          <span className="font-mono" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                            {row.plays} play{row.plays === 1 ? "" : "s"}
+                          </span>
+                          <span className="font-mono" style={{ fontSize: "11px", color: sort === "avg" ? "rgba(255,180,60,0.85)" : "rgba(255,255,255,0.4)" }}>
+                            {row.avgGuesses == null ? "—" : `avg ${row.avgGuesses.toFixed(1)}`}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
