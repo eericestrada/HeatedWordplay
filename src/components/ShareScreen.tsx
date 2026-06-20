@@ -3,6 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { addPuzzleShares, updatePuzzlePublic } from "../lib/api";
 import { buildPuzzleUrl, sharePuzzleLink, copyToClipboard } from "../utils/sharing";
+import DifficultyBreakdownPanel from "./DifficultyBreakdown";
 import type { Puzzle, ConnectedUser } from "../types";
 
 interface ShareScreenProps {
@@ -178,6 +179,11 @@ export default function ShareScreen({
           </div>
         ))}
       </div>
+
+      {/* Difficulty score for the creator (new-scale puzzles) */}
+      {puzzle.difficultyBreakdown && (
+        <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
+      )}
 
       <div
         className="font-body text-center"
