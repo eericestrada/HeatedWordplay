@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Puzzle, CompletionStatus, PairStreak } from "../types";
-import { getMedalEmoji, formatDate } from "../utils/scoring";
+import { getMedalEmoji, formatDate, getDifficultyTier } from "../utils/scoring";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PuzzleSelectorProps {
@@ -341,6 +341,7 @@ export default function PuzzleSelector({
                     const status = completedPuzzles[p.id];
                     const isFinished = status && status !== "submitted";
                     const isOwnPuzzle = status === "submitted";
+                    const tier = p.difficultyBreakdown ? getDifficultyTier(p.complexity) : null;
 
                     const handleClick = () => {
                       if (isFinished && onReview) {
@@ -384,6 +385,15 @@ export default function PuzzleSelector({
                               ? p.word.toUpperCase()
                               : `${p.wordLength || p.word.length} letters`}
                           </span>
+                          {tier && (
+                            <span
+                              title={`${tier.label} · difficulty ${p.complexity}`}
+                              aria-label={tier.label}
+                              style={{ fontSize: "12px", lineHeight: 1, flexShrink: 0 }}
+                            >
+                              {tier.icon}
+                            </span>
+                          )}
                           {isFinished && (
                             <span style={{ fontSize: "14px" }}>
                               {getMedalEmoji(
