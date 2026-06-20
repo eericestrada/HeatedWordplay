@@ -150,6 +150,21 @@ async function computeDifficulty(admin: any, upperWord: string): Promise<{ diffi
   return { difficulty, breakdown };
 }
 
+// Decode a Supabase JWT's payload and return its `role` claim (no signature
+// check — the gateway's verify_jwt already validated the signature; we only
+// need to tell anon from service_role).
+function jwtRole(token: string): string | null {
+  try {
+    const seg = token.split(".")[1];
+    if (!seg) return null;
+    const b64 = seg.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 2 ? "==" : b64.length % 4 === 3 ? "=" : "";
+    return JSON.parse(atob(b64 + pad)).role ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Run promises in small concurrent batches so we don't fan out hundreds of DB
 // queries at once, while still finishing well inside the function's time limit.
 async function inBatches<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -176,7 +191,12 @@ Deno.serve(async (req: Request) => {
   const provided =
     req.headers.get("x-admin-key") ||
     (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!provided || provided !== serviceKey) {
+  // Accept either an exact match of the injected service key, OR any token
+  // whose role claim is service_role (handles projects where the function's
+  // injected key differs from the legacy service_role key you hold). The anon
+  // key — role "anon" — is still rejected.
+  const authorized = !!provided && (provided === serviceKey || jwtRole(provided) === "service_role");
+  if (!authorized) {
     return new Response(JSON.stringify({ error: "Forbidden — service-role key required" }), {
       status: 403,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
