@@ -29,6 +29,7 @@ interface SavedGameState {
   letterStates: LetterStates;
   clueRevealed: boolean;
   magnetsUsed: number;
+  magnetTurns?: number[];
   hintedCells?: Record<number, string>;
   savedAt: number;
 }
@@ -76,6 +77,7 @@ interface GameBoardProps {
     revealedWord?: string,
     revealedDefinition?: string,
     surrendered?: boolean,
+    magnetTurns?: number[],
   ) => void;
   onBack: () => void;
   creatorStreak?: number;
@@ -116,6 +118,10 @@ export default function GameBoard({
   const [magnetsUsed, setMagnetsUsed] = useState(
     () => saved?.magnetsUsed || 0,
   );
+  // Which guess number each magnet was used on (e.g. [3, 5]).
+  const [magnetTurns, setMagnetTurns] = useState<number[]>(
+    () => saved?.magnetTurns || [],
+  );
   const [magnetMode, setMagnetMode] = useState(false);
   const [showMagnetConfirm, setShowMagnetConfirm] = useState(false);
   const [hintedCells, setHintedCells] = useState<Record<number, string>>(
@@ -153,10 +159,11 @@ export default function GameBoard({
       letterStates,
       clueRevealed,
       magnetsUsed,
+      magnetTurns,
       hintedCells,
       savedAt: Date.now(),
     });
-  }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, hintedCells, gameOver]);
+  }, [puzzle.id, completedRows, letterStates, clueRevealed, magnetsUsed, magnetTurns, hintedCells, gameOver]);
 
   // Dynamic tile sizing — measure grid area and compute tile size to fill it
   const gridRef = useRef<HTMLDivElement>(null);
@@ -275,6 +282,7 @@ export default function GameBoard({
         const tp = result.position;
         setHintedCells((prev) => ({ ...prev, [tp]: ch }));
         setMagnetsUsed((prev) => prev + 1);
+        setMagnetTurns((prev) => [...prev, totalCount + 1]);
         setMagnetMode(false);
         showMsg(
           magnetsUsed === 0
@@ -318,6 +326,7 @@ export default function GameBoard({
 
       setHintedCells((prev) => ({ ...prev, [targetPos!]: ch }));
       setMagnetsUsed((prev) => prev + 1);
+      setMagnetTurns((prev) => [...prev, totalCount + 1]);
       setMagnetMode(false);
       showMsg(
         magnetsUsed === 0
@@ -389,12 +398,13 @@ export default function GameBoard({
             revealedWord,
             revealedDefinition,
             surrendered,
+            magnetTurns,
           );
         }, revealDuration + 400);
       }
       setTimeout(() => setRevealingRow(-1), revealDuration);
     },
-    [wordLength, onComplete, clueRevealed, magnetsUsed, puzzle.id],
+    [wordLength, onComplete, clueRevealed, magnetsUsed, magnetTurns, puzzle.id],
   );
 
   // Submit guess (async for server evaluation)
@@ -556,6 +566,7 @@ export default function GameBoard({
         res.word,
         res.definition,
         true,
+        magnetTurns,
       );
     } catch (err) {
       setSurrendering(false);

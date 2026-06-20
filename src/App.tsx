@@ -402,6 +402,7 @@ export default function App() {
     revealedWord?: string,
     revealedDefinition?: string,
     surrendered = false,
+    magnetTurns?: number[],
   ) => {
     const rd: ResultData = { totalGuesses, medal, usedClue, magnetsUsed, rows, surrendered };
     let finalPuzzle = selectedPuzzle;
@@ -440,7 +441,7 @@ export default function App() {
 
       // Save guess history to the attempt record so users can revisit later
       if (typeof selectedPuzzle.id === "string") {
-        saveAttemptGuesses(selectedPuzzle.id, rows).catch(console.error);
+        saveAttemptGuesses(selectedPuzzle.id, rows, magnetTurns).catch(console.error);
       }
 
       // Re-fetch puzzle data so definition/inspo are visible (now that attempt exists)

@@ -185,15 +185,19 @@ export async function updatePuzzlePublic(
 export async function saveAttemptGuesses(
   puzzleId: string,
   guesses: Array<{ result: Array<{ letter: string; status: string | null }> }>,
+  magnetTurns?: number[],
 ) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
 
+  const update: Record<string, unknown> = { guesses };
+  if (magnetTurns && magnetTurns.length > 0) update.magnet_turns = magnetTurns;
+
   await supabase
     .from("attempts")
-    .update({ guesses })
+    .update(update)
     .eq("puzzle_id", puzzleId)
     .eq("user_id", user.id);
 }

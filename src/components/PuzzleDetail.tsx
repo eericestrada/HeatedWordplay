@@ -112,6 +112,8 @@ export default function PuzzleDetail({
     const isOpen = expanded.has(s.user_id);
     const lettersOn = showLetters.has(s.user_id);
     const grid = s.guesses ?? [];
+    const magnetTurns = s.magnet_turns ?? [];
+    const magnetsUsed = s.magnets_used ?? 0;
     return (
       <div
         key={s.user_id}
@@ -188,32 +190,57 @@ export default function PuzzleDetail({
             </div>
 
             {grid.length > 0 ? (
-              <div className="flex flex-col items-center" style={{ gap: "4px" }}>
-                {grid.map((row, ri) => (
-                  <div key={ri} className="flex" style={{ gap: "4px" }}>
-                    {row.result.map((cell, ci) => {
-                      const c = cellColors(cell.status);
-                      return (
-                        <div
-                          key={ci}
-                          className="font-mono flex items-center justify-center rounded"
-                          style={{
-                            width: "24px",
-                            height: "24px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            background: c.bg,
-                            border: c.border,
-                            color: c.color,
-                          }}
-                        >
-                          {lettersOn ? cell.letter.toUpperCase() : ""}
+              <>
+                <div className="flex flex-col items-center" style={{ gap: "4px" }}>
+                  {grid.map((row, ri) => {
+                    const rowMagnets = magnetTurns.filter((t) => t === ri + 1).length;
+                    return (
+                      <div key={ri} className="flex items-center justify-center" style={{ gap: "6px" }}>
+                        {/* left spacer keeps the cells centered opposite the magnet marker */}
+                        <span style={{ width: "34px" }} />
+                        <div className="flex" style={{ gap: "4px" }}>
+                          {row.result.map((cell, ci) => {
+                            const c = cellColors(cell.status);
+                            return (
+                              <div
+                                key={ci}
+                                className="font-mono flex items-center justify-center rounded"
+                                style={{
+                                  width: "24px",
+                                  height: "24px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  background: c.bg,
+                                  border: c.border,
+                                  color: c.color,
+                                }}
+                              >
+                                {lettersOn ? cell.letter.toUpperCase() : ""}
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                        <span
+                          className="shrink-0"
+                          title={rowMagnets ? `${rowMagnets} magnet${rowMagnets > 1 ? "s" : ""} on guess ${ri + 1}` : undefined}
+                          style={{ width: "34px", fontSize: "12px", lineHeight: 1, textAlign: "left", letterSpacing: "-2px" }}
+                        >
+                          {rowMagnets > 0 ? "🧲".repeat(rowMagnets) : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {magnetsUsed > 0 && (
+                  <div
+                    className="font-body text-center"
+                    style={{ fontSize: "11px", color: "rgba(26,158,158,0.75)", marginTop: "10px" }}
+                  >
+                    🧲 {magnetsUsed} magnet{magnetsUsed > 1 ? "s" : ""} used
+                    {magnetTurns.length === 0 ? " · timing not recorded for this game" : ""}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             ) : (
               <div className="font-body text-center" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", padding: "6px" }}>
                 Guess history not available for this attempt.

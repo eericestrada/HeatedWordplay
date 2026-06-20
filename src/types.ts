@@ -205,6 +205,10 @@ export interface PuzzleStats {
     completed_at: string;
     /** True when the player gave up (white flag or phoned-in final guess). */
     surrendered?: boolean;
+    /** Total magnets used in the attempt (0–2). */
+    magnets_used?: number;
+    /** Guess numbers a magnet was used on, e.g. [3, 5]. Empty for pre-tracking attempts. */
+    magnet_turns?: number[];
     /** Per-cell guess grid; present only from the creator-scoped RPC. */
     guesses?: CompletedRow[];
   }>;
