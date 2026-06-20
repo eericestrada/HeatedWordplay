@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import Tile from "./Tile";
-import { getAttempt } from "../lib/api";
+import { getAttempt, getMyDeadEndTurns } from "../lib/api";
 import {
   getMedalEmoji,
   getMedalLabel,
@@ -22,11 +22,15 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<CompletedRow[]>([]);
   const [attempt, setAttempt] = useState<Record<string, unknown> | null>(null);
+  const [deadTurns, setDeadTurns] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const data = await getAttempt(puzzle.id as string);
+      const [data, dead] = await Promise.all([
+        getAttempt(puzzle.id as string),
+        getMyDeadEndTurns(puzzle.id as string),
+      ]);
       if (data) {
         setAttempt(data);
         // Parse guesses from the JSONB column
@@ -35,6 +39,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
           setRows(guesses);
         }
       }
+      setDeadTurns(dead);
       setLoading(false);
     })();
   }, [puzzle.id]);
@@ -42,9 +47,19 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
   const medal = (attempt?.medal as Medal) || null;
   const totalGuesses = (attempt?.total_guesses as number) || 0;
   const magnetsUsed = (attempt?.magnets_used as number) || 0;
+  const magnetTurns = (attempt?.magnet_turns as number[]) || [];
   const surrendered = !!attempt?.surrendered;
   const solved = medal !== null;
+  const totalDeadEnds = deadTurns.length;
   const wordLength = puzzle.wordLength || puzzle.word.length;
+
+  // Dead-end count warms amber → red as a turn's invalid attempts pile up.
+  const deadColor = (n: number) =>
+    n <= 2
+      ? "rgba(255,180,60,0.85)"
+      : n <= 4
+        ? "rgba(255,140,60,0.9)"
+        : "rgba(255,100,80,0.95)";
 
   // Clues are penalty-free (matches VictoryScreen / scoring.ts) — only magnets reduce the score.
   const multiplier = getMultiplier(medal);
@@ -172,22 +187,94 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
         </div>
       )}
 
-      {/* Guess grid */}
+      {/* Clue + inspo — sits right before the grid so the solve reads in context */}
+      {(puzzle.clue || puzzle.context) && (
+        <div
+          className="w-full"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            borderLeft: "3px solid rgba(255,180,60,0.5)",
+            borderRadius: "0 12px 12px 0",
+            padding: "13px 16px",
+          }}
+        >
+          {puzzle.clue && (
+            <div
+              className="font-body"
+              style={{ fontSize: "13px", lineHeight: 1.5, color: "rgba(255,255,255,0.82)" }}
+            >
+              <span
+                className="font-mono uppercase"
+                style={{ fontSize: "9px", letterSpacing: "0.1em", color: "rgba(255,180,60,0.6)" }}
+              >
+                Clue ·{" "}
+              </span>
+              {puzzle.clue}
+            </div>
+          )}
+          {puzzle.context && (
+            <div
+              className="font-body italic"
+              style={{
+                fontSize: "12px",
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.5)",
+                marginTop: puzzle.clue ? "8px" : 0,
+              }}
+            >
+              "{puzzle.context}"
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Guess grid — each row shows the magnet(s) and dead ends from that turn */}
       {rows.length > 0 ? (
         <div className="flex flex-col gap-1.5 items-center w-full">
-          {rows.map((row, i) => (
-            <div key={i} className="flex gap-1.5 justify-center">
-              {row.result.map((cell: ResultCell, ci: number) => (
-                <Tile
-                  key={ci}
-                  letter={cell.letter}
-                  status={cell.status}
-                  isActive={false}
-                  isRevealing={false}
-                />
-              ))}
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const rowMagnets = magnetTurns.filter((t) => t === i + 1).length;
+            const rowDead = deadTurns.filter((t) => t === i + 1).length;
+            return (
+              <div key={i} className="flex items-center justify-center gap-2">
+                {/* left spacer balances the right annotation column so tiles stay centered */}
+                <span style={{ width: "52px" }} />
+                <div className="flex gap-1.5">
+                  {row.result.map((cell: ResultCell, ci: number) => (
+                    <Tile
+                      key={ci}
+                      letter={cell.letter}
+                      status={cell.status}
+                      isActive={false}
+                      isRevealing={false}
+                    />
+                  ))}
+                </div>
+                <div
+                  className="flex items-center shrink-0"
+                  style={{ width: "52px", gap: "6px" }}
+                >
+                  {rowMagnets > 0 && (
+                    <span
+                      title={`Magnet used on guess ${i + 1}`}
+                      style={{ fontSize: "14px", lineHeight: 1, letterSpacing: "-2px" }}
+                    >
+                      {"🧲".repeat(rowMagnets)}
+                    </span>
+                  )}
+                  {rowDead > 0 && (
+                    <span
+                      className="font-mono flex items-center"
+                      title={`${rowDead} invalid word${rowDead > 1 ? "s" : ""} tried on guess ${i + 1}`}
+                      style={{ fontSize: "13px", gap: "2px", color: deadColor(rowDead) }}
+                    >
+                      <span style={{ fontWeight: 700 }}>{rowDead}</span>
+                      <span style={{ color: "rgba(255,90,90,0.9)" }}>✗</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div
@@ -216,6 +303,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
             : solved
               ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
               : `Used all ${totalGuesses} guesses`}
+          {totalDeadEnds > 0 && ` \u00b7 ${totalDeadEnds} dead end${totalDeadEnds > 1 ? "s" : ""}`}
           {aids && ` \u00b7 ${aids}`}
           {solved && ` \u00b7 Score: ${finalScore}`}
         </div>
@@ -224,41 +312,6 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
       {/* Difficulty breakdown \u2014 new-scale puzzles only */}
       {puzzle.difficultyBreakdown && (
         <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
-      )}
-
-      {/* Inspo */}
-      {puzzle.context && (
-        <div
-          className="w-full rounded-xl"
-          style={{
-            background: "rgba(255,255,255,0.02)",
-            padding: "14px 20px",
-          }}
-        >
-          <div
-            className="font-body uppercase tracking-[0.12em]"
-            style={{
-              fontSize: "10px",
-              fontWeight: 600,
-              color: "rgba(255,255,255,0.3)",
-              marginBottom: "4px",
-            }}
-          >
-            {puzzle.creator === "You"
-              ? "Your inspo"
-              : `Why ${puzzle.creator} chose this word`}
-          </div>
-          <div
-            className="font-body"
-            style={{
-              fontSize: "13px",
-              lineHeight: 1.5,
-              color: "rgba(255,255,255,0.5)",
-            }}
-          >
-            "{puzzle.context}"
-          </div>
-        </div>
       )}
 
       {/* Per-puzzle group stats */}

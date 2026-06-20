@@ -223,6 +223,30 @@ export async function getAttempt(puzzleId: string) {
 }
 
 /**
+ * Fetch the current user's per-turn dead ends (invalid words) for one puzzle:
+ * an array of the guess numbers each invalid word was tried on, e.g. [1, 1, 3].
+ * Reads the player's own submission log (RLS permits own-row reads); rows with
+ * no guess_number (logged before per-turn tracking) are excluded.
+ */
+export async function getMyDeadEndTurns(puzzleId: string): Promise<number[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("guess_number")
+    .eq("puzzle_id", puzzleId)
+    .eq("user_id", user.id)
+    .eq("is_valid", false)
+    .not("guess_number", "is", null);
+
+  if (error || !data) return [];
+  return data.map((r) => r.guess_number as number);
+}
+
+/**
  * Fetch bilateral streaks for the current user with all partners.
  * Returns current streak count, last activity date, and total completions per partner.
  */
