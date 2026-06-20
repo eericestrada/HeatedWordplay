@@ -209,6 +209,9 @@ export interface PuzzleStats {
     magnets_used?: number;
     /** Guess numbers a magnet was used on, e.g. [3, 5]. Empty for pre-tracking attempts. */
     magnet_turns?: number[];
+    /** Guess numbers each dead end (invalid word) was tried on, e.g. [1, 1, 3]
+     *  = two dead ends on guess 1, one on guess 3. Empty for pre-tracking attempts. */
+    dead_end_turns?: number[];
     /** Per-cell guess grid; present only from the creator-scoped RPC. */
     guesses?: CompletedRow[];
   }>;
@@ -221,6 +224,9 @@ export interface SubmissionStat {
   invalid_count: number;
   total_submissions: number;
   completed: boolean;
+  /** Guess numbers each dead end (invalid word) was tried on, e.g. [1, 1, 3].
+   *  Empty for submissions logged before per-turn tracking existed. */
+  dead_end_turns?: number[];
 }
 
 export interface LeaderboardEntry {

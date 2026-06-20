@@ -241,10 +241,14 @@ export async function getPairStreaks(userId: string): Promise<PairStreak[]> {
  * Log a single word submission (valid or invalid) for a friendly puzzle.
  * Fire-and-forget: never blocks gameplay and swallows errors. Used to track
  * how many invalid words a player tried, even on puzzles they never finish.
+ *
+ * `guessNumber` is the 1-based turn the submission was attempted on, so dead
+ * ends (invalid words) can be counted per turn — not just as a running total.
  */
 export async function logSubmission(
   puzzleId: string,
   isValid: boolean,
+  guessNumber?: number,
 ): Promise<void> {
   try {
     const {
@@ -256,6 +260,7 @@ export async function logSubmission(
       puzzle_id: puzzleId,
       user_id: user.id,
       is_valid: isValid,
+      guess_number: guessNumber ?? null,
     });
   } catch {
     // Best-effort logging — ignore failures.

@@ -454,9 +454,10 @@ export default function GameBoard({
       setEvaluating(false);
 
       // Log every submission on real shared friendly puzzles (skip mock/local,
-      // own, and daily). Fire-and-forget — never blocks gameplay.
+      // own, and daily). Fire-and-forget — never blocks gameplay. The guess
+      // number (current turn) is stamped so dead ends can be counted per turn.
       if (useServerEval && !isDaily) {
-        void logSubmission(puzzle.id as string, !!dictResult);
+        void logSubmission(puzzle.id as string, !!dictResult, totalCount + 1);
       }
 
       if (!dictResult) {
