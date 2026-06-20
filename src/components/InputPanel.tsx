@@ -103,15 +103,18 @@ export default function InputPanel({
   const shuffle = () => {
     const arr = [...viableConsonants];
     for (let i = arr.length - 1; i > 0; i--) {
+      // Math.random is fine here — shuffle only runs on a user tap, not render.
+      // eslint-disable-next-line react-hooks/purity
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     setPoolOrder(arr);
   };
 
+  const letterCount = Object.keys(letterStates).length;
   useEffect(() => {
     setPoolOrder(null);
-  }, [Object.keys(letterStates).length]);
+  }, [letterCount]);
 
   const renderPoolKey = (ch: string, isVowel: boolean) => {
     const state = letterStates[ch] || "unused";

@@ -13,13 +13,12 @@ export default function PuzzleStatsPanel({ puzzleId, groupId }: PuzzleStatsPanel
   const { user } = useAuth();
   const [stats, setStats] = useState<PuzzleStats | null>(null);
   const [submissionStats, setSubmissionStats] = useState<SubmissionStat[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Only "loading" when there's a group to fetch stats for; avoids a
+  // synchronous setState in the effect.
+  const [loading, setLoading] = useState(!!groupId);
 
   useEffect(() => {
-    if (!groupId) {
-      setLoading(false);
-      return;
-    }
+    if (!groupId) return;
     Promise.all([
       getPuzzleStats(puzzleId, groupId),
       getPuzzleSubmissionStats(puzzleId, groupId),

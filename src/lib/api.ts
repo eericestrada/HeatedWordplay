@@ -124,7 +124,7 @@ export async function submitPuzzle(params: {
  * Use magnet power-up via Edge Function.
  * Server returns the correct position for the letter.
  */
-export async function useMagnetServer(params: {
+export async function requestMagnet(params: {
   puzzle_id: string;
   letter: string;
   current_grid: Array<{ letter: string; position: number; pinned: boolean }>;

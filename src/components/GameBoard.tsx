@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
-import { evaluateGuess, useMagnetServer, lookupWord, logSubmission, surrenderGame } from "../lib/api";
+import { evaluateGuess, requestMagnet, lookupWord, logSubmission, surrenderGame } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { getMedal } from "../utils/scoring";
 import type {
@@ -291,7 +291,7 @@ export default function GameBoard({
             ? { letter: knownCorrect[i], position: i, pinned: true }
             : { letter: c.letter, position: i, pinned: c.pinned },
         );
-        const result = await useMagnetServer({
+        const result = await requestMagnet({
           puzzle_id: puzzle.id as string,
           letter: ch,
           current_grid: currentGrid,

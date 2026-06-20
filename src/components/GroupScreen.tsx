@@ -122,6 +122,8 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
   }, []);
 
   useEffect(() => {
+    // Fetch-on-mount; fetchGroups only sets state after its async fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchGroups();
   }, [fetchGroups]);
 
