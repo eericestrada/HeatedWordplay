@@ -29,6 +29,7 @@ interface GroupActivity {
   medal: string | null;
   total_guesses: number;
   score: number;
+  surrendered: boolean;
   completed_at: string;
 }
 
@@ -966,6 +967,8 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                 {activity.slice(0, 10).map((item) => {
                   const playerName = item.player_display_name || item.player_username;
                   const creatorName = item.creator_display_name || item.creator_username;
+                  const verb = item.medal ? "solved" : item.surrendered ? "gave up on" : "got stumped by";
+                  const outcome = (item.medal as "gold" | "silver" | "bronze" | null) ?? (item.surrendered ? "surrendered" : "failed");
                   return (
                     <div
                       key={item.id}
@@ -982,14 +985,14 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                           style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}
                         >
                           <strong style={{ color: "rgba(255,255,255,0.8)" }}>{playerName}</strong>
-                          {" solved "}
+                          {" "}{verb}{" "}
                           <strong style={{ color: "rgba(255,180,60,0.7)" }}>{creatorName}'s</strong>
                           {" puzzle"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
                         <span style={{ fontSize: "14px" }}>
-                          {getMedalEmoji(item.medal as "gold" | "silver" | "bronze" | null)}
+                          {getMedalEmoji(outcome)}
                         </span>
                         <span
                           className="font-mono"
