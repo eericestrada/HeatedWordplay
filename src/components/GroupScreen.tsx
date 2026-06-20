@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { getGroupLeaderboard } from "../lib/api";
-import { getMedalEmoji } from "../utils/scoring";
+import { getMedalEmoji, getDifficultyTier } from "../utils/scoring";
 import ReviewScreen from "./ReviewScreen";
 import type { LeaderboardEntry, Puzzle } from "../types";
 
@@ -30,6 +30,8 @@ interface GroupActivity {
   total_guesses: number;
   score: number;
   surrendered: boolean;
+  complexity: number;
+  has_breakdown: boolean;
   completed_at: string;
 }
 
@@ -969,6 +971,7 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                   const creatorName = item.creator_display_name || item.creator_username;
                   const verb = item.medal ? "solved" : item.surrendered ? "gave up on" : "got stumped by";
                   const outcome = (item.medal as "gold" | "silver" | "bronze" | null) ?? (item.surrendered ? "surrendered" : "failed");
+                  const tier = item.has_breakdown ? getDifficultyTier(item.complexity) : null;
                   return (
                     <div
                       key={item.id}
@@ -991,6 +994,11 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
+                        {tier && (
+                          <span title={tier.label} aria-label={tier.label} style={{ fontSize: "13px", lineHeight: 1 }}>
+                            {tier.icon}
+                          </span>
+                        )}
                         <span style={{ fontSize: "14px" }}>
                           {getMedalEmoji(outcome)}
                         </span>

@@ -1,4 +1,4 @@
-import { formatDate } from "../utils/scoring";
+import { formatDate, getDifficultyTier } from "../utils/scoring";
 import { markSeen } from "../utils/myWords";
 import type { Puzzle } from "../types";
 import type { MyWordRow, MyWordsSummary } from "../utils/myWords";
@@ -140,6 +140,7 @@ export default function MyWords({
           <div className="flex flex-col" style={{ gap: "10px", marginBottom: "24px" }}>
             {drafts.map((row) => {
               const puzzle = resolvePuzzle(row);
+              const tier = puzzle.difficultyBreakdown ? getDifficultyTier(puzzle.complexity) : null;
               return (
                 <div
                   key={row.puzzleId}
@@ -157,11 +158,18 @@ export default function MyWords({
                     className="font-body flex-1 min-w-0 text-left"
                     style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
                   >
-                    <span
-                      className="font-display"
-                      style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
-                    >
-                      {row.word.toUpperCase()}
+                    <span className="flex items-center" style={{ gap: "8px" }}>
+                      <span
+                        className="font-display"
+                        style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "0.05em", color: "#f5f0e8" }}
+                      >
+                        {row.word.toUpperCase()}
+                      </span>
+                      {tier && (
+                        <span title={tier.label} aria-label={tier.label} style={{ fontSize: "13px", lineHeight: 1 }}>
+                          {tier.icon}
+                        </span>
+                      )}
                     </span>
                     <div className="font-body" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "3px" }}>
                       Draft · created {formatDate(row.createdAt.split("T")[0])}
@@ -212,6 +220,8 @@ export default function MyWords({
               const shareLabel = row.isPublic ? "🌐 Public" : "Shared";
               const shareColor = row.isPublic ? "rgba(26,158,158,0.8)" : "rgba(255,180,60,0.6)";
               const borderColor = row.newSolvers > 0 ? "rgba(255,180,60,0.25)" : "rgba(255,255,255,0.08)";
+              const puzzle = resolvePuzzle(row);
+              const tier = puzzle.difficultyBreakdown ? getDifficultyTier(puzzle.complexity) : null;
 
               return (
                 <button
@@ -233,6 +243,11 @@ export default function MyWords({
                       >
                         {row.word.toUpperCase()}
                       </span>
+                      {tier && (
+                        <span title={tier.label} aria-label={tier.label} style={{ fontSize: "13px", lineHeight: 1, flexShrink: 0 }}>
+                          {tier.icon}
+                        </span>
+                      )}
                       {row.newSolvers > 0 && (
                         <span
                           className="font-mono"
