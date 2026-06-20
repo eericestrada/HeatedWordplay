@@ -157,6 +157,23 @@ export interface HeadToHead {
   theirs: H2HWord[];
 }
 
+/**
+ * One of the caller's own words with the raw ingredients of its Torment score.
+ * The score itself is computed client-side (see tormentScore in scoring.ts).
+ */
+export interface PantheonEntry {
+  puzzle_id: string;
+  word: string;
+  complexity: number;
+  has_breakdown: boolean;
+  /** Total invalid words tried by others, including abandoners who never finished. */
+  dead_ends: number;
+  solved_count: number;
+  /** Stumped — used all 6 guesses without solving. */
+  failed_count: number;
+  surrendered_count: number;
+}
+
 export type DetailTab = "results" | "share";
 
 /**

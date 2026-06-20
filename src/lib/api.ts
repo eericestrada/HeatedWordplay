@@ -8,6 +8,7 @@ import type {
   PlayerStats,
   CreatorStats,
   HeadToHead,
+  PantheonEntry,
   DailyWordMeta,
   DailyPoolWord,
   DailyPoolAnonymous,
@@ -363,6 +364,19 @@ export async function getHeadToHead(
     return null;
   }
   return data as HeadToHead | null;
+}
+
+/**
+ * The Pantheon: the caller's own words with the raw stats behind each word's
+ * Torment score (dead ends + give-ups). Ranking/scoring is done client-side.
+ */
+export async function getPantheon(): Promise<PantheonEntry[]> {
+  const { data, error } = await supabase.rpc("get_pantheon");
+  if (error) {
+    console.error("Failed to fetch pantheon:", error);
+    return [];
+  }
+  return (data as PantheonEntry[]) || [];
 }
 
 /**

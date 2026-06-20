@@ -55,6 +55,40 @@ export function getDifficultyTier(score: number): DifficultyTier {
   return { label: "Nightmare", icon: "💀", color: "rgba(255,90,90,0.9)", bg: "rgba(255,90,90,0.1)" };
 }
 
+// ── Torment scoring (The Pantheon) ──
+// Per word: dead ends × a gentle difficulty weight, plus a give-up bonus for
+// each non-solve. Dead ends + give-ups dominate; difficulty only nudges, so a
+// brutal Medium word can outrank an easy Nightmare. Placeholder knobs — retune
+// freely (kept here, not in SQL, so no migration is needed to change them).
+const TORMENT_WEIGHTS: Record<string, number> = {
+  Cake: 1.0,
+  Easy: 1.05,
+  Medium: 1.1,
+  Hard: 1.2,
+  Nightmare: 1.3,
+};
+const TORMENT_STUMPED_BONUS = 25;
+const TORMENT_GAVE_UP_BONUS = 20;
+
+export function tormentScore(e: {
+  complexity: number;
+  has_breakdown: boolean;
+  dead_ends: number;
+  failed_count: number;
+  surrendered_count: number;
+}): number {
+  // Legacy (un-scored) words use a neutral weight — their complexity is on the
+  // old scale and not comparable to the v1 tier thresholds.
+  const weight = e.has_breakdown
+    ? TORMENT_WEIGHTS[getDifficultyTier(e.complexity).label] ?? 1
+    : 1;
+  return Math.round(
+    e.dead_ends * weight +
+      e.failed_count * TORMENT_STUMPED_BONUS +
+      e.surrendered_count * TORMENT_GAVE_UP_BONUS,
+  );
+}
+
 // Additive contributors for display. The locate terms (length/flow/spread) are
 // folded into one "Letters" value AFTER the common-letter discount, so the chips
 // sum to the stored difficulty.

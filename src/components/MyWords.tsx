@@ -1,5 +1,6 @@
 import { formatDate, getDifficultyTier } from "../utils/scoring";
 import { markSeen } from "../utils/myWords";
+import Pantheon from "./Pantheon";
 import type { Puzzle } from "../types";
 import type { MyWordRow, MyWordsSummary } from "../utils/myWords";
 
@@ -49,6 +50,12 @@ export default function MyWords({
     onOpenPuzzle(resolvePuzzle(row));
   };
 
+  // Open a word's detail by id (used by the Pantheon, which only knows ids).
+  const openById = (puzzleId: string) => {
+    const found = puzzles.find((p) => String(p.id) === puzzleId);
+    if (found) onOpenPuzzle(found);
+  };
+
   const summaryCard = (value: number, label: string, highlight = false) => (
     <div
       className="text-center rounded-[10px]"
@@ -88,6 +95,9 @@ export default function MyWords({
         {summaryCard(summary.plays, "plays")}
         {summaryCard(summary.newSolvers, "new solvers", true)}
       </div>
+
+      {/* The Pantheon — words ranked by Torment (renders nothing until one bites) */}
+      <Pantheon onOpenPuzzle={openById} />
 
       <button
         onClick={onCreateNew}
