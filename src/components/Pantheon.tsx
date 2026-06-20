@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getPantheon } from "../lib/api";
-import { getDifficultyTier, tormentScore } from "../utils/scoring";
+import { getDifficultyTier, getMedalEmoji, tormentScore } from "../utils/scoring";
 import type { PantheonEntry } from "../types";
 
 interface PantheonProps {
@@ -131,6 +131,16 @@ export default function Pantheon({ onOpenPuzzle }: PantheonProps) {
                   </span>
                   {p.tierIcon && (
                     <span style={{ fontSize: "11px", lineHeight: 1, color: p.tierColor ?? undefined }}>{p.tierIcon}</span>
+                  )}
+                  {p.failed_count > 0 && (
+                    <span title={`${p.failed_count} stumped`} style={{ fontSize: "11px", lineHeight: 1 }}>
+                      {getMedalEmoji("failed")}
+                    </span>
+                  )}
+                  {p.surrendered_count > 0 && (
+                    <span title={`${p.surrendered_count} gave up`} style={{ fontSize: "11px", lineHeight: 1 }}>
+                      {getMedalEmoji("surrendered")}
+                    </span>
                   )}
                 </div>
                 <div className="font-body" style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", marginTop: "2px" }}>
