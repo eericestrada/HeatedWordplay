@@ -8,6 +8,7 @@ import {
 } from "../utils/scoring";
 import { buildEmojiGrid, buildEmojiGridWithGuesses, shareText as shareTextUtil, shareResults, buildPuzzleUrl } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
+import DifficultyBreakdownPanel from "./DifficultyBreakdown";
 
 interface VictoryScreenProps {
   puzzle: Puzzle;
@@ -105,7 +106,7 @@ export default function VictoryScreen({
   };
 
   const scoreItems = [
-    { label: "Complexity", value: String(puzzle.complexity), hl: false, penalty: false },
+    { label: puzzle.difficultyBreakdown ? "Difficulty" : "Complexity", value: String(puzzle.complexity), hl: false, penalty: false },
     { label: "Multiplier", value: `${multiplier}×`, hl: false, penalty: false },
     ...(magnetsUsed > 0
       ? [
@@ -298,6 +299,11 @@ export default function VictoryScreen({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Difficulty breakdown — new-scale puzzles only */}
+      {!isDaily && puzzle.difficultyBreakdown && (
+        <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
       )}
 
       {/* Guess summary */}

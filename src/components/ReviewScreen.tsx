@@ -9,6 +9,7 @@ import {
 } from "../utils/scoring";
 import { shareResults } from "../utils/sharing";
 import PuzzleStatsPanel from "./PuzzleStatsPanel";
+import DifficultyBreakdownPanel from "./DifficultyBreakdown";
 import type { Puzzle, CompletedRow, ResultCell, Medal } from "../types";
 
 interface ReviewScreenProps {
@@ -228,6 +229,11 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
           {aids && ` \u00b7 ${aids}`}
           {solved && ` \u00b7 Score: ${finalScore}`}
         </div>
+      )}
+
+      {/* Difficulty breakdown \u2014 new-scale puzzles only */}
+      {puzzle.difficultyBreakdown && (
+        <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
       )}
 
       {/* Inspo */}

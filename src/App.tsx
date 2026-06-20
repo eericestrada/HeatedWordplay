@@ -30,6 +30,7 @@ import type {
   GameMode,
   DailyHeatState,
   DailyWordMeta,
+  DifficultyBreakdown,
 } from "./types";
 
 export default function App() {
@@ -140,6 +141,7 @@ export default function App() {
       hasClue: p.has_clue as boolean,
       hasAttempted: p.has_attempted as boolean,
       isPublic: p.is_public as boolean,
+      difficultyBreakdown: (p.difficulty_breakdown as DifficultyBreakdown) ?? null,
     }));
 
     setPuzzles(mapped);
@@ -234,6 +236,7 @@ export default function App() {
             hasClue: data.has_clue as boolean,
             hasAttempted: data.has_attempted as boolean,
             isPublic: data.is_public as boolean,
+            difficultyBreakdown: (data.difficulty_breakdown as DifficultyBreakdown) ?? null,
           };
         }
       }
@@ -379,6 +382,7 @@ export default function App() {
       clue: data.clue,
       context: data.inspo,
       complexity: data.complexity,
+      difficultyBreakdown: data.difficultyBreakdown ?? null,
       submittedAt: data.submittedAt,
       wordLength: data.word.length,
       hasClue: !!data.clue,

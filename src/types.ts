@@ -52,6 +52,23 @@ export type DailyHeatState =
   | { status: "completed"; guesses: number; streak: number; rows: CompletedRow[] }
   | { status: "streak_broken" };
 
+/** Per-component difficulty breakdown (scoring v1). Stored on the puzzle and
+ * shown to players. Present only on puzzles scored with the new model; legacy
+ * puzzles have a null breakdown and keep their old Scrabble complexity. */
+export interface DifficultyBreakdown {
+  base: number;
+  rarity: number;
+  repeat: number;
+  length: number;
+  flow: number;
+  concentrated: number;
+  spread: number;
+  letter_ease: number;
+  max_cohort: number;
+  zipf: number | null;
+  tier: string;
+}
+
 export interface Puzzle {
   id: string | number;
   word: string;
@@ -61,6 +78,7 @@ export interface Puzzle {
   clue: string | null;
   context: string | null;
   complexity: number;
+  difficultyBreakdown?: DifficultyBreakdown | null;
   submittedAt: string;
   wordLength?: number;
   hasClue?: boolean;
@@ -108,6 +126,7 @@ export interface SubmitWordData {
   clue: string | null;
   inspo: string;
   complexity: number;
+  difficultyBreakdown?: DifficultyBreakdown | null;
   submittedAt: string;
   puzzleId: string;
 }
@@ -124,13 +143,6 @@ export interface ConnectedUser {
   username: string;
   display_name: string | null;
   shared_group_count: number;
-}
-
-export interface ComplexityRange {
-  label: string;
-  icon: string;
-  color: string;
-  bg: string;
 }
 
 export interface PairStreak {

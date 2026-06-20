@@ -7,17 +7,133 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const LETTER_VALUES: Record<string, number> = {
-  A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8,
-  K: 5, L: 1, M: 3, N: 1, O: 1, P: 3, Q: 10, R: 1, S: 1, T: 1,
-  U: 1, V: 4, W: 4, X: 8, Y: 4, Z: 10,
-};
+// ── Difficulty scoring v1 (see migration 009 + difficulty-scoring-spec.md) ──
+// difficulty = BASE + rarity + trickiness, computed server-side from the
+// word_frequency table. Stored in puzzles.complexity; the per-component
+// breakdown is stored in puzzles.difficulty_breakdown (jsonb). Words operate
+// in lowercase because the word_frequency seed is lowercase.
 
-function calcComplexity(word: string): number {
-  return word
-    .toUpperCase()
-    .split("")
-    .reduce((sum, ch) => sum + (LETTER_VALUES[ch] || 0), 0);
+const COMMON_LETTERS = new Set("etaoinsr".split(""));
+const TOP_COMMON = new Set("etaoinshrdlu".split(""));
+const WEIRD_ONSETS = ["fj", "sv", "ts", "zh", "cz", "sz", "pf", "kv", "gn", "kn", "ps", "mn", "vl", "wr"];
+const RARE_LETTERS = new Set("jqxz".split(""));
+const VOWELS = new Set("aeiou".split(""));
+const r1 = (x: number) => Math.round(x * 10) / 10;
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+function repeatTerm(w: string): number {
+  const counts: Record<string, number> = {};
+  for (const ch of w) counts[ch] = (counts[ch] || 0) + 1;
+  let pts = 0;
+  for (const ch in counts) {
+    if (counts[ch] > 1) pts += (counts[ch] - 1) * (COMMON_LETTERS.has(ch) ? 2.5 : 1.5);
+  }
+  return pts;
+}
+
+function flowTerm(w: string): number {
+  let pts = 0;
+  if (WEIRD_ONSETS.includes(w.slice(0, 2))) pts += 3;
+  for (let i = 0; i < w.length - 1; i++) {
+    const a = w[i], b = w[i + 1];
+    if ((RARE_LETTERS.has(a) && !VOWELS.has(b)) || (RARE_LETTERS.has(b) && !VOWELS.has(a))) pts += 2;
+  }
+  const vowels = [...w].filter((c) => VOWELS.has(c)).length;
+  if (w.length >= 5 && vowels <= 1) pts += 3;
+  return Math.min(4, pts);
+}
+
+function letterEase(w: string): number {
+  const distinct = new Set(w.split(""));
+  let common = 0;
+  for (const ch of distinct) if (TOP_COMMON.has(ch)) common++;
+  return distinct.size ? common / distinct.size : 0;
+}
+
+function suffixStems(w: string): string[] {
+  const sufs: [string, string][] = [
+    ["ies", "y"], ["es", ""], ["ed", "e"], ["ed", ""], ["ing", "e"], ["ing", ""],
+    ["er", "e"], ["er", ""], ["ly", ""], ["s", ""], ["d", ""],
+  ];
+  const out: string[] = [];
+  for (const [suf, rep] of sufs) {
+    if (w.endsWith(suf) && w.length - suf.length >= 3) out.push(w.slice(0, w.length - suf.length) + rep);
+  }
+  return [...new Set(out)];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rarityOf(admin: any, w: string): Promise<{ rarity: number; zipf: number | null }> {
+  try {
+    const { data } = await admin.from("word_frequency").select("zipf").eq("word", w).maybeSingle();
+    let zipf: number | null = data?.zipf ?? null;
+    if (zipf == null) {
+      const stems = suffixStems(w);
+      if (stems.length) {
+        const { data: d2 } = await admin
+          .from("word_frequency").select("zipf").in("word", stems)
+          .order("zipf", { ascending: false }).limit(1);
+        if (d2 && d2.length) zipf = d2[0].zipf;
+      }
+    }
+    if (zipf == null) return { rarity: 18, zipf: null };
+    return { rarity: Math.max(0, Math.min(18, Math.round((5 - zipf) * 4))), zipf };
+  } catch (_e) {
+    return { rarity: 0, zipf: null }; // table missing / query error — don't mint a phantom nightmare
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function neighborhood(admin: any, w: string): Promise<{ concentrated: number; spread: number; maxCohort: number }> {
+  try {
+    const cands = new Set<string>();
+    for (let i = 0; i < w.length; i++) {
+      for (let cc = 97; cc <= 122; cc++) {
+        const ch = String.fromCharCode(cc);
+        if (ch === w[i]) continue;
+        cands.add(w.slice(0, i) + ch + w.slice(i + 1));
+      }
+    }
+    const { data } = await admin.from("word_frequency").select("word").in("word", [...cands]).gte("zipf", 2.5);
+    const perPos = new Array(w.length).fill(0);
+    let total = 0;
+    for (const row of (data || [])) {
+      let pos = -1;
+      for (let i = 0; i < w.length; i++) { if (row.word[i] !== w[i]) { pos = i; break; } }
+      if (pos >= 0) { perPos[pos]++; total++; }
+    }
+    const maxCohort = w.length ? Math.max(...perPos) : 0;
+    return {
+      concentrated: Math.min(8, Math.max(0, maxCohort - 3) * 1.6),
+      spread: Math.min(4, (total - maxCohort) * 0.5),
+      maxCohort,
+    };
+  } catch (_e) {
+    return { concentrated: 0, spread: 0, maxCohort: 0 };
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function computeDifficulty(admin: any, upperWord: string): Promise<{ difficulty: number; breakdown: Record<string, unknown> }> {
+  const w = upperWord.toLowerCase();
+  const BASE = 5;
+  const rep = repeatTerm(w);
+  const len = Math.max(0, 8 - w.length) * 0.6;
+  const flow = flowTerm(w);
+  const ease = letterEase(w);
+  const { rarity, zipf } = await rarityOf(admin, w);
+  const { concentrated, spread, maxCohort } = await neighborhood(admin, w);
+  const locate = len + flow + spread;
+  const trick = rep + concentrated + locate * (1 - 0.6 * ease); // letterEase discounts locate, not repeats/cohort
+  const difficulty = Math.round(BASE + rarity + trick);
+  const tier =
+    difficulty <= 13 ? "cake" : difficulty <= 16 ? "easy" : difficulty <= 19 ? "medium" : difficulty <= 25 ? "hard" : "nightmare";
+  const breakdown = {
+    base: BASE, rarity, repeat: r1(rep), length: r1(len), flow,
+    concentrated: r1(concentrated), spread: r1(spread), letter_ease: r2(ease),
+    max_cohort: maxCohort, zipf: zipf != null ? r2(zipf) : null, tier,
+  };
+  return { difficulty, breakdown };
 }
 
 interface DictionaryMeaning {
@@ -167,7 +283,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const complexity = calcComplexity(upperWord);
+    const { difficulty, breakdown } = await computeDifficulty(supabaseAdmin, upperWord);
 
     // Create the puzzle
     const { data: puzzle, error: puzzleError } = await supabaseAdmin
@@ -179,8 +295,9 @@ Deno.serve(async (req: Request) => {
         part_of_speech: part_of_speech.trim(),
         clue: clue?.trim() || null,
         inspo: inspo.trim(),
-        complexity,
+        complexity: difficulty,
         is_public: !!is_public,
+        difficulty_breakdown: breakdown,
       })
       .select()
       .single();
@@ -237,6 +354,7 @@ Deno.serve(async (req: Request) => {
           id: puzzle.id,
           word: puzzle.word,
           complexity: puzzle.complexity,
+          difficulty_breakdown: puzzle.difficulty_breakdown,
           created_at: puzzle.created_at,
         },
       }),

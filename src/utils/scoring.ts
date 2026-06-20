@@ -1,17 +1,4 @@
-import type { Medal, ComplexityRange } from "../types";
-
-export const LETTER_VALUES: Record<string, number> = {
-  A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8,
-  K: 5, L: 1, M: 3, N: 1, O: 1, P: 3, Q: 10, R: 1, S: 1, T: 1,
-  U: 1, V: 4, W: 4, X: 8, Y: 4, Z: 10,
-};
-
-export function calcComplexity(word: string): number {
-  return word
-    .toUpperCase()
-    .split("")
-    .reduce((sum, ch) => sum + (LETTER_VALUES[ch] || 0), 0);
-}
+import type { Medal, DifficultyBreakdown } from "../types";
 
 export function getMedal(guessCount: number, solved: boolean): Medal | null {
   if (!solved) return null;
@@ -42,27 +29,41 @@ export function getMedalLabel(medal: Medal | null): string {
   return "NO MEDAL";
 }
 
-export function getComplexityRange(score: number): ComplexityRange {
-  if (score < 10)
-    return {
-      label: "< 10",
-      icon: "\u2726",
-      color: "rgba(120,220,120,0.7)",
-      bg: "rgba(120,220,120,0.08)",
-    };
-  if (score < 20)
-    return {
-      label: "10\u201320",
-      icon: "\u26A1",
-      color: "rgba(255,180,60,0.7)",
-      bg: "rgba(255,180,60,0.08)",
-    };
-  return {
-    label: "20+",
-    icon: "\uD83D\uDD25",
-    color: "rgba(255,100,100,0.8)",
-    bg: "rgba(255,100,100,0.08)",
-  };
+// ── Difficulty scoring v1 ──
+// Tiers (calibrated to the new-scale distribution): Cake ≤13 / Easy 14-16 /
+// Medium 17-19 / Hard 20-25 / Nightmare ≥26.
+
+export interface DifficultyTier {
+  label: string;
+  icon: string;
+  color: string;
+  bg: string;
+}
+
+export function getDifficultyTier(score: number): DifficultyTier {
+  if (score <= 13)
+    return { label: "Cake", icon: "🍰", color: "rgba(120,220,120,0.85)", bg: "rgba(120,220,120,0.08)" };
+  if (score <= 16)
+    return { label: "Easy", icon: "✦", color: "rgba(150,210,120,0.8)", bg: "rgba(150,210,120,0.08)" };
+  if (score <= 19)
+    return { label: "Medium", icon: "⚡", color: "rgba(255,180,60,0.8)", bg: "rgba(255,180,60,0.08)" };
+  if (score <= 25)
+    return { label: "Hard", icon: "🔥", color: "rgba(255,120,60,0.85)", bg: "rgba(255,120,60,0.1)" };
+  return { label: "Nightmare", icon: "💀", color: "rgba(255,90,90,0.9)", bg: "rgba(255,90,90,0.1)" };
+}
+
+// Additive contributors for display. The locate terms (length/flow/spread) are
+// folded into one "Letters" value AFTER the common-letter discount, so the chips
+// sum to the stored difficulty.
+export function difficultyFactors(b: DifficultyBreakdown): { label: string; value: number }[] {
+  const locateNet =
+    Math.round((b.length + b.flow + b.spread) * (1 - 0.6 * b.letter_ease) * 10) / 10;
+  const out: { label: string; value: number }[] = [{ label: "Base", value: b.base }];
+  if (b.rarity) out.push({ label: "Rarity", value: b.rarity });
+  if (b.repeat) out.push({ label: "Repeats", value: b.repeat });
+  if (b.concentrated) out.push({ label: "Neighbors", value: b.concentrated });
+  if (locateNet) out.push({ label: "Letters", value: locateNet });
+  return out;
 }
 
 export function formatDate(d: string): string {

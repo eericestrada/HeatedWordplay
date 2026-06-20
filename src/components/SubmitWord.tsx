@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { SubmitWordData, DictionaryEntry } from "../types";
-import { calcComplexity, getComplexityRange } from "../utils/scoring";
 import { lookupWord, submitPuzzle } from "../lib/api";
 
 type Step = "enter" | "pick" | "clue" | "inspo" | "review";
@@ -32,9 +31,6 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
   const [inspo, setInspo] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const complexity = word ? calcComplexity(word) : 0;
-  const range = getComplexityRange(complexity);
 
   const handleLookup = async () => {
     const upper = word.toUpperCase().trim();
@@ -105,7 +101,8 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
         partOfSpeech: selectedDef.partOfSpeech,
         clue: clue.trim() || null,
         inspo: inspo.trim(),
-        complexity,
+        complexity: result.puzzle.complexity,
+        difficultyBreakdown: result.puzzle.difficulty_breakdown ?? null,
         submittedAt: new Date().toISOString().split("T")[0],
         puzzleId: result.puzzle.id,
       });
@@ -183,14 +180,6 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
             >
               {word.length > 0 ? `${word.length}/8 letters` : "4–8 letters"}
             </div>
-            {word.length >= 4 && (
-              <div
-                className="font-mono"
-                style={{ fontSize: "11px", color: range.color }}
-              >
-                {range.icon} {range.label}
-              </div>
-            )}
           </div>
         </div>
 
@@ -563,19 +552,12 @@ export default function SubmitWord({ onSubmit, onBack }: SubmitWordProps) {
           ))}
         </div>
 
-        {/* Complexity */}
-        <div className="flex items-center gap-2 font-mono" style={{ fontSize: "13px" }}>
-          <span style={{ color: "rgba(255,255,255,0.35)" }}>Complexity</span>
-          <span
-            className="rounded-md"
-            style={{
-              color: range.color,
-              background: range.bg,
-              padding: "4px 10px",
-            }}
-          >
-            {range.icon} {complexity}
-          </span>
+        {/* Difficulty is computed server-side on submit (rarity + neighborhood) */}
+        <div
+          className="font-body text-center"
+          style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}
+        >
+          Difficulty is scored when you submit.
         </div>
 
         {/* Definition */}
