@@ -6,9 +6,11 @@ import type { ConnectedUser, PairStreak } from "../types";
 
 interface PeopleScreenProps {
   onBack: () => void;
+  /** Open the per-friend head-to-head view. */
+  onOpenH2H?: (partnerId: string, partnerName: string) => void;
 }
 
-export default function PeopleScreen({ onBack }: PeopleScreenProps) {
+export default function PeopleScreen({ onBack, onOpenH2H }: PeopleScreenProps) {
   const { profile } = useAuth();
   const [users, setUsers] = useState<ConnectedUser[]>([]);
   const [streaks, setStreaks] = useState<Record<string, PairStreak>>({});
@@ -85,7 +87,7 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
         className="font-body text-center"
         style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}
       >
-        People you share groups with.
+        Tap someone to see your head-to-head.
       </div>
 
       {loading ? (
@@ -116,9 +118,10 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
             const atRisk = isAtRisk(s);
 
             return (
-              <div
+              <button
                 key={u.user_id}
-                className="flex items-center gap-3 rounded-lg"
+                onClick={() => onOpenH2H?.(u.user_id, u.display_name || u.username)}
+                className="flex items-center gap-3 rounded-lg text-left w-full"
                 style={{
                   padding: "12px 14px",
                   background: streak > 0
@@ -127,6 +130,7 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
                   border: streak > 0
                     ? "1px solid rgba(255,140,40,0.12)"
                     : "1px solid rgba(255,255,255,0.05)",
+                  cursor: onOpenH2H ? "pointer" : "default",
                 }}
               >
                 <div
@@ -204,7 +208,7 @@ export default function PeopleScreen({ onBack }: PeopleScreenProps) {
                     {u.shared_group_count} {u.shared_group_count === 1 ? "group" : "groups"}
                   </div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

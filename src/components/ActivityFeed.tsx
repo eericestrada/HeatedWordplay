@@ -117,7 +117,7 @@ export default function ActivityFeed({ groupId, completedPuzzles = {}, onItemCli
                 <strong style={{ color: "rgba(255,255,255,0.8)" }}>
                   {playerName}
                 </strong>{" "}
-                solved{" "}
+                {item.medal ? "solved" : "took on"}{" "}
                 <strong style={{ color: "rgba(255,180,60,0.7)" }}>
                   {creatorName}'s
                 </strong>{" "}

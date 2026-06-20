@@ -17,6 +17,7 @@ import WordMasterScreen from "./components/WordMasterScreen";
 import EditorScheduleScreen from "./components/EditorScheduleScreen";
 import MyWords from "./components/MyWords";
 import PuzzleDetail from "./components/PuzzleDetail";
+import HeadToHead from "./components/HeadToHead";
 import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord, getCreatorStats } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import { buildEmojiGrid } from "./utils/sharing";
@@ -957,12 +958,14 @@ export default function App() {
                 completedPuzzles={completedPuzzles}
                 onItemClick={(puzzleId, isCompleted) => {
                   const puzzle = puzzles.find((p) => p.id === puzzleId);
-                  if (puzzle) {
-                    if (isCompleted) {
-                      navigate({ screen: "review", puzzle });
-                    } else {
-                      handleSelect(puzzle);
-                    }
+                  if (!puzzle) return;
+                  if (puzzle.creator_id === user.id) {
+                    // Your own word — open its detail (Results)
+                    openDetail(puzzle, "results");
+                  } else if (isCompleted) {
+                    navigate({ screen: "review", puzzle });
+                  } else {
+                    handleSelect(puzzle);
                   }
                 }}
               />
@@ -1036,10 +1039,26 @@ export default function App() {
         <ReviewScreen puzzle={selectedPuzzle} onBack={back} groupId={selectedGroupId} />
       )}
       {screen === "people" && (
-        <PeopleScreen onBack={back} />
+        <PeopleScreen
+          onBack={back}
+          onOpenH2H={(id, name) => navigate({ screen: "h2h", partner: { id, name } })}
+        />
+      )}
+      {screen === "h2h" && top.partner && (
+        <HeadToHead
+          partnerId={top.partner.id}
+          partnerName={top.partner.name}
+          streak={streaks[top.partner.id]?.current_streak || 0}
+        />
       )}
       {screen === "stats" && (
-        <StatsScreen onBack={back} />
+        <StatsScreen
+          onBack={back}
+          onOpenPuzzle={(id) => {
+            const p = puzzles.find((x) => String(x.id) === id);
+            if (p) openDetail(p, "results");
+          }}
+        />
       )}
       {screen === "mywords" && (
         <MyWords

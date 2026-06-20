@@ -137,7 +137,21 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "mywords" | "detail" | "wordmaster" | "editor-schedule";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "mywords" | "detail" | "h2h" | "wordmaster" | "editor-schedule";
+
+export interface H2HWord {
+  puzzle_id: string;
+  word: string;
+  medal: Medal | null;
+  surrendered: boolean;
+  total_guesses: number;
+  completed_at: string;
+}
+
+export interface HeadToHead {
+  yours: H2HWord[];
+  theirs: H2HWord[];
+}
 
 export type DetailTab = "results" | "share";
 
@@ -153,6 +167,7 @@ export interface NavNode {
   gameMode?: GameMode;
   submittedPuzzleId?: string | null;
   detailTab?: DetailTab;
+  partner?: { id: string; name: string };
 }
 
 export interface ConnectedUser {

@@ -7,6 +7,7 @@ import type {
   LeaderboardEntry,
   PlayerStats,
   CreatorStats,
+  HeadToHead,
   DailyWordMeta,
   DailyPoolWord,
   DailyPoolAnonymous,
@@ -310,6 +311,25 @@ export async function getCreatorPuzzleStats(
     return null;
   }
   return data as PuzzleStats | null;
+}
+
+/**
+ * Head-to-head: words exchanged between the current user and one partner,
+ * each direction, with outcomes. Only callable for your own head-to-head.
+ */
+export async function getHeadToHead(
+  userId: string,
+  partnerId: string,
+): Promise<HeadToHead | null> {
+  const { data, error } = await supabase.rpc("get_head_to_head", {
+    p_user_id: userId,
+    p_partner_id: partnerId,
+  });
+  if (error) {
+    console.error("Failed to fetch head-to-head:", error);
+    return null;
+  }
+  return data as HeadToHead | null;
 }
 
 /**

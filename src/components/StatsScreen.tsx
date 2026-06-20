@@ -6,9 +6,11 @@ import type { PlayerStats, CreatorStats } from "../types";
 
 interface StatsScreenProps {
   onBack: () => void;
+  /** Deep-link a "My Words" row into its Puzzle detail. */
+  onOpenPuzzle?: (puzzleId: string) => void;
 }
 
-export default function StatsScreen({ onBack }: StatsScreenProps) {
+export default function StatsScreen({ onBack, onOpenPuzzle }: StatsScreenProps) {
   const { profile } = useAuth();
   const [tab, setTab] = useState<"career" | "words">("career");
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
@@ -214,13 +216,15 @@ export default function StatsScreen({ onBack }: StatsScreenProps) {
                   ? Math.round((p.solve_count / p.play_count) * 100)
                   : null;
                 return (
-                  <div
+                  <button
                     key={p.puzzle_id}
-                    className="flex items-center justify-between rounded-lg"
+                    onClick={() => onOpenPuzzle?.(p.puzzle_id)}
+                    className="flex items-center justify-between rounded-lg w-full text-left"
                     style={{
                       padding: "10px 14px",
                       background: "rgba(255,255,255,0.02)",
                       border: "1px solid rgba(255,255,255,0.04)",
+                      cursor: onOpenPuzzle ? "pointer" : "default",
                     }}
                   >
                     <div className="min-w-0">
@@ -243,7 +247,7 @@ export default function StatsScreen({ onBack }: StatsScreenProps) {
                         {p.avg_guesses && ` · ${p.avg_guesses} avg`}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right">
+                    <div className="shrink-0 text-right flex items-center gap-2">
                       {p.play_count > 0 ? (
                         <div
                           className="font-mono"
@@ -265,8 +269,11 @@ export default function StatsScreen({ onBack }: StatsScreenProps) {
                           no plays
                         </div>
                       )}
+                      {onOpenPuzzle && (
+                        <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.2)" }}>{"›"}</span>
+                      )}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
