@@ -183,6 +183,8 @@ export interface PuzzleStats {
     total_guesses: number;
     score: number;
     completed_at: string;
+    /** Per-cell guess grid; present only from the creator-scoped RPC. */
+    guesses?: CompletedRow[];
   }>;
 }
 

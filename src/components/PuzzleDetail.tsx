@@ -2,7 +2,14 @@ import { useState, useEffect } from "react";
 import { getCreatorPuzzleStats } from "../lib/api";
 import { getMedalEmoji, formatDate } from "../utils/scoring";
 import ShareScreen from "./ShareScreen";
-import type { Puzzle, PuzzleStats, DetailTab } from "../types";
+import type { Puzzle, PuzzleStats, DetailTab, CellStatus } from "../types";
+
+// Tile colors for the solver guess grids (match the in-game tiles).
+function cellColors(status: CellStatus | null) {
+  if (status === "correct") return { bg: "#2d8a4e", color: "#ffffff", border: "1px solid #2d8a4e" };
+  if (status === "present") return { bg: "#1a9e9e", color: "#ffffff", border: "1px solid #1a9e9e" };
+  return { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.08)" };
+}
 
 interface PuzzleDetailProps {
   puzzle: Puzzle;
@@ -29,8 +36,35 @@ export default function PuzzleDetail({
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const [stats, setStats] = useState<PuzzleStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showLetters, setShowLetters] = useState<Set<string>>(new Set());
 
   const puzzleId = String(puzzle.id);
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    // Viewing letters is a deliberate per-open action — reset to squares.
+    setShowLetters((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleLetters = (id: string) => {
+    setShowLetters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -76,42 +110,122 @@ export default function PuzzleDetail({
   const solverRow = (
     s: PuzzleStats["solvers"][number],
     failed: boolean,
-  ) => (
-    <div
-      key={s.user_id}
-      className="flex items-center justify-between rounded-xl"
-      style={{
-        border: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(255,255,255,0.02)",
-        padding: "11px 14px",
-      }}
-    >
-      <div className="flex items-center min-w-0" style={{ gap: "10px" }}>
-        <span
-          className="flex items-center justify-center rounded-full shrink-0"
-          style={{
-            width: "30px",
-            height: "30px",
-            fontSize: "13px",
-            fontWeight: 700,
-            background: "rgba(255,180,60,0.1)",
-            color: "rgba(255,180,60,0.7)",
-          }}
+  ) => {
+    const isOpen = expanded.has(s.user_id);
+    const lettersOn = showLetters.has(s.user_id);
+    const grid = s.guesses ?? [];
+    return (
+      <div
+        key={s.user_id}
+        className="rounded-xl overflow-hidden"
+        style={{
+          border: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(255,255,255,0.02)",
+        }}
+      >
+        <button
+          onClick={() => toggleExpand(s.user_id)}
+          className="flex items-center justify-between w-full text-left"
+          style={{ padding: "11px 14px", background: "none", border: "none", cursor: "pointer" }}
         >
-          {(s.display_name || s.username).charAt(0).toUpperCase()}
-        </span>
-        <span className="font-body truncate" style={{ fontSize: "14px", color: "#f5f0e8" }}>
-          {s.display_name || s.username}
-        </span>
+          <div className="flex items-center min-w-0" style={{ gap: "10px" }}>
+            <span
+              className="flex items-center justify-center rounded-full shrink-0"
+              style={{
+                width: "30px",
+                height: "30px",
+                fontSize: "13px",
+                fontWeight: 700,
+                background: "rgba(255,180,60,0.1)",
+                color: "rgba(255,180,60,0.7)",
+              }}
+            >
+              {(s.display_name || s.username).charAt(0).toUpperCase()}
+            </span>
+            <span className="font-body truncate" style={{ fontSize: "14px", color: "#f5f0e8" }}>
+              {s.display_name || s.username}
+            </span>
+          </div>
+          <div className="flex items-center shrink-0" style={{ gap: "8px" }}>
+            <span style={{ fontSize: "15px" }}>{failed ? "❌" : getMedalEmoji(s.medal)}</span>
+            <span className="font-mono" style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>
+              {s.total_guesses}/6
+            </span>
+            <span
+              style={{
+                fontSize: "14px",
+                color: "rgba(255,255,255,0.25)",
+                transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s ease",
+                display: "inline-block",
+              }}
+            >
+              {"›"}
+            </span>
+          </div>
+        </button>
+
+        {isOpen && (
+          <div style={{ padding: "14px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.18)" }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: "10px" }}>
+              <span className="font-mono uppercase tracking-[0.1em]" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
+                Their guesses
+              </span>
+              {grid.length > 0 && (
+                <button
+                  onClick={() => toggleLetters(s.user_id)}
+                  className="font-body rounded-full"
+                  style={{
+                    padding: "3px 11px",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    background: lettersOn ? "rgba(255,180,60,0.12)" : "rgba(255,255,255,0.04)",
+                    border: lettersOn ? "1px solid rgba(255,180,60,0.3)" : "1px solid rgba(255,255,255,0.1)",
+                    color: lettersOn ? "rgba(255,180,60,0.9)" : "rgba(255,255,255,0.5)",
+                  }}
+                >
+                  {lettersOn ? "Hide letters" : "Show letters"}
+                </button>
+              )}
+            </div>
+
+            {grid.length > 0 ? (
+              <div className="flex flex-col items-center" style={{ gap: "4px" }}>
+                {grid.map((row, ri) => (
+                  <div key={ri} className="flex" style={{ gap: "4px" }}>
+                    {row.result.map((cell, ci) => {
+                      const c = cellColors(cell.status);
+                      return (
+                        <div
+                          key={ci}
+                          className="font-mono flex items-center justify-center rounded"
+                          style={{
+                            width: "24px",
+                            height: "24px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            background: c.bg,
+                            border: c.border,
+                            color: c.color,
+                          }}
+                        >
+                          {lettersOn ? cell.letter.toUpperCase() : ""}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="font-body text-center" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", padding: "6px" }}>
+                Guess history not available for this attempt.
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <div className="flex items-center shrink-0" style={{ gap: "8px" }}>
-        <span style={{ fontSize: "15px" }}>{failed ? "❌" : getMedalEmoji(s.medal)}</span>
-        <span className="font-mono" style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>
-          {s.total_guesses}/6
-        </span>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="max-w-[480px] mx-auto" style={{ padding: "8px 20px 48px", animation: "fadeUp 0.35s ease" }}>
