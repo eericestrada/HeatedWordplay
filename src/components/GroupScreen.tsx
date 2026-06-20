@@ -41,6 +41,7 @@ interface GroupPuzzle {
   creator_display_name: string | null;
   word_length: number;
   complexity: number;
+  has_breakdown: boolean;
   has_clue: boolean;
   created_at: string;
   has_attempted: boolean;
@@ -703,6 +704,7 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                   const creatorName = p.creator_display_name || p.creator_username;
                   const isOwn = profile?.username === p.creator_username;
                   const attemptedWord = attemptedWords[p.puzzle_id];
+                  const tier = p.has_breakdown ? getDifficultyTier(p.complexity) : null;
                   return (
                     <button
                       key={p.puzzle_id}
@@ -776,7 +778,15 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                               has clue
                             </span>
                           )}
-                          {p.complexity >= 4 && (
+                          {tier ? (
+                            <span
+                              title={`${tier.label} · difficulty ${p.complexity}`}
+                              aria-label={tier.label}
+                              style={{ fontSize: "12px", lineHeight: 1 }}
+                            >
+                              {tier.icon}
+                            </span>
+                          ) : p.complexity >= 4 ? (
                             <span
                               className="font-body"
                               style={{
@@ -789,7 +799,7 @@ export default function GroupScreen({ onReady, manage = false, onSelectPuzzle }:
                             >
                               hard
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                       <div className="shrink-0 ml-3">
