@@ -42,6 +42,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
   const medal = (attempt?.medal as Medal) || null;
   const totalGuesses = (attempt?.total_guesses as number) || 0;
   const magnetsUsed = (attempt?.magnets_used as number) || 0;
+  const surrendered = !!attempt?.surrendered;
   const solved = medal !== null;
   const wordLength = puzzle.wordLength || puzzle.word.length;
 
@@ -133,7 +134,7 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
       {/* Medal + Word */}
       <div className="text-center">
         <div style={{ fontSize: "48px", lineHeight: 1 }}>
-          {getMedalEmoji(medal)}
+          {surrendered ? "🏳️" : getMedalEmoji(medal)}
         </div>
         <div
           className="font-display"
@@ -223,9 +224,11 @@ export default function ReviewScreen({ puzzle, onBack, groupId = null }: ReviewS
           className="font-body"
           style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)" }}
         >
-          {solved
-            ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
-            : `Used all ${totalGuesses} guesses`}
+          {surrendered
+            ? "You gave up on this one"
+            : solved
+              ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
+              : `Used all ${totalGuesses} guesses`}
           {aids && ` \u00b7 ${aids}`}
           {solved && ` \u00b7 Score: ${finalScore}`}
         </div>

@@ -68,6 +68,39 @@ function evaluateCells(cells: GuessCell[], answer: string): ResultCell[] {
   return result;
 }
 
+// Positions the player had already locked GREEN across their prior guesses.
+function lockedGreenPositions(priorGuesses: GuessCell[][], answer: string): Set<number> {
+  const locked = new Set<number>();
+  for (const g of priorGuesses || []) {
+    if (!Array.isArray(g)) continue;
+    const res = evaluateCells(g, answer);
+    for (const cell of res) {
+      if (cell.status === "correct") locked.add(cell.position);
+    }
+  }
+  return locked;
+}
+
+// "Gave up" heuristic: on a non-solving final guess, a genuine struggler keeps
+// the correct-position letters they already found. If the final guess keeps
+// fewer than half of those locked greens, they phoned it in → surrendered.
+// If they never locked a green, there's nothing to abandon → not surrender.
+function phonedInFinalGuess(
+  priorGuesses: GuessCell[][],
+  finalCells: GuessCell[],
+  answer: string,
+): boolean {
+  const locked = lockedGreenPositions(priorGuesses, answer);
+  if (locked.size === 0) return false;
+  const answerLetters = answer.split("");
+  let kept = 0;
+  for (const pos of locked) {
+    const cell = finalCells.find((c) => c.position === pos);
+    if (cell && cell.letter === answerLetters[pos]) kept++;
+  }
+  return kept / locked.size < 0.5;
+}
+
 function getMedal(guessCount: number, solved: boolean): string | null {
   if (!solved) return null;
   if (guessCount <= 2) return "gold";
@@ -128,10 +161,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { puzzle_id, guess_cells, used_clue, magnets_used, guess_number, is_daily } =
+    const { puzzle_id, guess_cells, used_clue, magnets_used, guess_number, is_daily, surrender, prior_guesses } =
       await req.json();
 
-    if (!puzzle_id || !guess_cells) {
+    if (!puzzle_id || (!surrender && !guess_cells)) {
       return new Response(
         JSON.stringify({ error: "Missing puzzle_id or guess_cells" }),
         { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
@@ -201,6 +234,63 @@ Deno.serve(async (req: Request) => {
       puzzleComplexity = puzzle.complexity;
     }
 
+    // ---- Explicit surrender (white flag) ----
+    if (surrender) {
+      const surrenderGuessNum = guess_number ? parseInt(String(guess_number)) : 0;
+      const surrenderResp: Record<string, unknown> = {
+        game_over: true,
+        solved: false,
+        surrendered: true,
+      };
+
+      if (is_daily) {
+        // Daily mode: no attempt record. Reveal and mark used.
+        surrenderResp.word = answerWord;
+        surrenderResp.definition = answerDefinition;
+        await supabaseAdmin
+          .from("daily_words")
+          .update({ status: "used" })
+          .eq("id", puzzle_id)
+          .eq("status", "scheduled");
+      } else {
+        const isOwnPuzzle = creatorId === user.id;
+        const magnetsUsedClamped = Math.min(2, Math.max(0, Number(magnets_used) || 0));
+        const { error: surrenderError } = await supabaseAdmin
+          .from("attempts")
+          .insert({
+            puzzle_id,
+            user_id: user.id,
+            total_guesses: surrenderGuessNum,
+            medal: null,
+            score: 0,
+            used_clue: !!used_clue,
+            magnets_used: magnetsUsedClamped,
+            is_own_puzzle: isOwnPuzzle,
+            surrendered: true,
+          });
+
+        if (surrenderError && surrenderError.code !== "23505") {
+          console.error("Failed to record surrender:", surrenderError);
+          return new Response(
+            JSON.stringify({ error: "Could not record your result — please try again." }),
+            { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
+          );
+        }
+
+        surrenderResp.medal = null;
+        surrenderResp.score = 0;
+        surrenderResp.is_own_puzzle = isOwnPuzzle;
+        surrenderResp.word = answerWord;
+        surrenderResp.definition = answerDefinition;
+        surrenderResp.clue = answerClue;
+        surrenderResp.inspo = answerInspo;
+      }
+
+      return new Response(JSON.stringify(surrenderResp), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
     // Evaluate the guess
     const result = evaluateCells(guess_cells, answerWord);
     const guessWord = guess_cells
@@ -250,6 +340,12 @@ Deno.serve(async (req: Request) => {
           ? 0
           : Math.round(puzzleComplexity * multiplier * magnetPenalty);
 
+        // Phoned-in "gave up": only on a non-solving final guess, only for
+        // friendly puzzles played by someone other than the creator.
+        const surrendered =
+          !solved && !isOwnPuzzle &&
+          phonedInFinalGuess(prior_guesses || [], guess_cells, answerWord);
+
         const { data: attempt, error: attemptError } = await supabaseAdmin
           .from("attempts")
           .insert({
@@ -261,6 +357,7 @@ Deno.serve(async (req: Request) => {
             used_clue: !!used_clue,
             magnets_used: magnetsUsedClamped,
             is_own_puzzle: isOwnPuzzle,
+            surrendered,
           })
           .select()
           .single();
@@ -283,6 +380,7 @@ Deno.serve(async (req: Request) => {
         responseData.medal = isOwnPuzzle ? null : medal;
         responseData.score = score;
         responseData.is_own_puzzle = isOwnPuzzle;
+        responseData.surrendered = surrendered;
         responseData.attempt = attempt;
 
         // Reveal the answer

@@ -7,12 +7,15 @@ export function getMedal(guessCount: number, solved: boolean): Medal | null {
   return "bronze";
 }
 
-export function getMedalEmoji(medal: Medal | null | "submitted"): string {
+export function getMedalEmoji(
+  medal: Medal | null | "submitted" | "surrendered" | "failed",
+): string {
   if (medal === "gold") return "\u{1F947}";
   if (medal === "silver") return "\u{1F948}";
   if (medal === "bronze") return "\u{1F949}";
   if (medal === "submitted") return "\u270D\uFE0F";
-  return "\u274C";
+  if (medal === "surrendered") return "\u{1F3F3}\uFE0F"; // \uD83C\uDFF3\uFE0F gave up
+  return "\u274C"; // failed / no medal \u2014 stumped
 }
 
 export function getMultiplier(medal: Medal | null): number {

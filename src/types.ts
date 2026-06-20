@@ -105,7 +105,7 @@ export type LetterStates = Record<string, LetterState>;
 
 export type Medal = "gold" | "silver" | "bronze";
 
-export type CompletionStatus = Medal | "failed" | "submitted";
+export type CompletionStatus = Medal | "failed" | "surrendered" | "submitted";
 
 export interface CompletedRow {
   result: ResultCell[];
@@ -117,6 +117,7 @@ export interface ResultData {
   usedClue: boolean;
   magnetsUsed: number;
   rows: CompletedRow[];
+  surrendered?: boolean;
 }
 
 export interface SubmitWordData {
@@ -183,6 +184,8 @@ export interface PuzzleStats {
     total_guesses: number;
     score: number;
     completed_at: string;
+    /** True when the player gave up (white flag or phoned-in final guess). */
+    surrendered?: boolean;
     /** Per-cell guess grid; present only from the creator-scoped RPC. */
     guesses?: CompletedRow[];
   }>;

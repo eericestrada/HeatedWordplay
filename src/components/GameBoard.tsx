@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Tile, { TileRow } from "./Tile";
 import InputPanel from "./InputPanel";
 import { evaluateCells } from "../utils/evaluation";
-import { evaluateGuess, useMagnetServer, lookupWord, logSubmission } from "../lib/api";
+import { evaluateGuess, useMagnetServer, lookupWord, logSubmission, surrenderGame } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { getMedal } from "../utils/scoring";
 import type {
@@ -75,6 +75,7 @@ interface GameBoardProps {
     rows: CompletedRow[],
     revealedWord?: string,
     revealedDefinition?: string,
+    surrendered?: boolean,
   ) => void;
   onBack: () => void;
   creatorStreak?: number;
@@ -122,6 +123,8 @@ export default function GameBoard({
   );
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState("");
+  const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+  const [surrendering, setSurrendering] = useState(false);
 
   // Prevents a double-fired magnet tap from counting one use twice. Mobile can
   // fire touch + click, sending two requests before `magnetsUsed` updates,
@@ -334,6 +337,7 @@ export default function GameBoard({
       newRows: CompletedRow[],
       revealedWord?: string,
       revealedDefinition?: string,
+      surrendered = false,
     ) => {
       setCompletedRows(newRows);
       setGrid(emptyGrid(wordLength));
@@ -384,6 +388,7 @@ export default function GameBoard({
             newRows,
             revealedWord,
             revealedDefinition,
+            surrendered,
           );
         }, revealDuration + 400);
       }
@@ -444,6 +449,17 @@ export default function GameBoard({
             .map((c, i) => ({ letter: c.letter, position: i }))
             .filter((c) => c.letter);
 
+          // On the final guess, send the prior guesses so the server can detect
+          // a phoned-in "gave up" finish from how many locked greens were kept.
+          const priorGuesses =
+            newTotal >= MAX_GUESSES
+              ? completedRows.map((row) =>
+                  row.result
+                    .map((cell, pos) => ({ letter: cell.letter, position: pos }))
+                    .filter((c) => c.letter),
+                )
+              : undefined;
+
           const response = await evaluateGuess({
             puzzle_id: puzzle.id as string,
             guess_cells: guessCells,
@@ -451,6 +467,7 @@ export default function GameBoard({
             magnets_used: magnetsUsed,
             guess_number: newTotal,
             is_daily: isDaily,
+            prior_guesses: priorGuesses,
           });
 
           // Convert server result to our ResultCell format
@@ -473,6 +490,7 @@ export default function GameBoard({
             newRows,
             response.game_over ? response.word : undefined,
             response.game_over ? response.definition : undefined,
+            !!response.surrendered,
           );
         } catch (err) {
           setEvaluating(false);
@@ -511,6 +529,40 @@ export default function GameBoard({
       processGuessResult,
     ],
   );
+
+  // Explicit in-game surrender (the white flag). Records the attempt as
+  // surrendered and reveals the answer.
+  const handleSurrender = async () => {
+    setShowSurrenderConfirm(false);
+    setSurrendering(true);
+    setEvalError("");
+    try {
+      const res = await surrenderGame({
+        puzzle_id: puzzle.id as string,
+        guess_number: totalCount,
+        used_clue: clueRevealed,
+        magnets_used: magnetsUsed,
+      });
+      setSurrendering(false);
+      gameEndedRef.current = true;
+      clearSavedGame(puzzle.id);
+      setGameOver(true);
+      onComplete(
+        totalCount,
+        null,
+        clueRevealed,
+        magnetsUsed,
+        completedRows,
+        res.word,
+        res.definition,
+        true,
+      );
+    } catch (err) {
+      setSurrendering(false);
+      const msg = err instanceof Error ? err.message : "Couldn't record surrender";
+      setEvalError(msg.includes("Session expired") ? "Session expired — signing in..." : msg);
+    }
+  };
 
   const handleKey = useCallback(
     (key: string) => {
@@ -947,6 +999,30 @@ export default function GameBoard({
         </div>
       )}
 
+      {/* Surrender (friendly puzzles only) */}
+      {useServerEval && !isDaily && !gameOver && revealingRow === -1 && (
+        <div className="w-full flex justify-center shrink-0">
+          <button
+            onClick={() => setShowSurrenderConfirm(true)}
+            disabled={surrendering}
+            className="font-body"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              background: "none",
+              border: "none",
+              cursor: surrendering ? "default" : "pointer",
+              fontSize: "13px",
+              color: "rgba(255,255,255,0.4)",
+              padding: "4px 8px",
+            }}
+          >
+            {surrendering ? "Surrendering…" : "🏳️ Stuck? Wave the white flag"}
+          </button>
+        </div>
+      )}
+
       {/* Input Panel */}
       <div className="w-full flex justify-center shrink-0 py-0.5">
         <InputPanel
@@ -993,6 +1069,82 @@ export default function GameBoard({
       >
         Tap a letter to pin it in place
       </div>
+
+      {/* Surrender confirm sheet */}
+      {showSurrenderConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={() => setShowSurrenderConfirm(false)}
+            style={{ position: "absolute", inset: 0, background: "rgba(8,6,4,0.6)", animation: "scrimIn .2s ease" }}
+          />
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              maxWidth: "520px",
+              background: "linear-gradient(180deg,#1a1410,#121016)",
+              borderTop: "1px solid rgba(255,180,60,0.14)",
+              borderRadius: "18px 18px 0 0",
+              boxShadow: "0 -16px 50px rgba(0,0,0,0.5)",
+              padding: "24px 22px calc(24px + env(safe-area-inset-bottom))",
+              animation: "fadeUp .25s ease",
+            }}
+          >
+            <div style={{ fontSize: "32px", textAlign: "center", lineHeight: 1, marginBottom: "10px" }}>🏳️</div>
+            <div className="font-display" style={{ fontSize: "19px", fontWeight: 700, textAlign: "center", color: "#f5f0e8", marginBottom: "8px" }}>
+              Give up on this one?
+            </div>
+            <div className="font-body" style={{ fontSize: "13px", lineHeight: 1.5, textAlign: "center", color: "rgba(255,255,255,0.5)", marginBottom: "20px" }}>
+              It'll show as <span style={{ color: "rgba(255,255,255,0.75)" }}>🏳️ gave up</span> — not a wrong-answer <span style={{ color: "rgba(255,255,255,0.75)" }}>❌</span>. No shame.
+            </div>
+            <div className="flex flex-col" style={{ gap: "10px" }}>
+              <button
+                onClick={handleSurrender}
+                className="font-body"
+                style={{
+                  width: "100%",
+                  borderRadius: "10px",
+                  padding: "13px",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  color: "rgba(255,255,255,0.85)",
+                }}
+              >
+                🏳️ Surrender
+              </button>
+              <button
+                onClick={() => setShowSurrenderConfirm(false)}
+                className="font-body"
+                style={{
+                  width: "100%",
+                  borderRadius: "10px",
+                  padding: "13px",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "rgba(255,180,60,0.1)",
+                  border: "1px solid rgba(255,180,60,0.3)",
+                  color: "rgba(255,180,60,0.9)",
+                }}
+              >
+                Keep trying
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

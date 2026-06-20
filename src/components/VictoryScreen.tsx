@@ -17,6 +17,7 @@ interface VictoryScreenProps {
   usedClue: boolean;
   magnetsUsed: number;
   rows: CompletedRow[];
+  surrendered?: boolean;
   onBack: () => void;
   creatorStreak?: number;
   groupId?: string | null;
@@ -31,6 +32,7 @@ export default function VictoryScreen({
   usedClue: _usedClue,
   magnetsUsed,
   rows,
+  surrendered = false,
   onBack,
   creatorStreak = 0,
   groupId = null,
@@ -130,7 +132,7 @@ export default function VictoryScreen({
       }}
     >
       <div style={{ fontSize: "64px", lineHeight: 1 }}>
-        {isDaily ? (solved ? "🔥" : "❌") : getMedalEmoji(medal)}
+        {surrendered ? "🏳️" : isDaily ? (solved ? "🔥" : "❌") : getMedalEmoji(medal)}
       </div>
 
       <div className="text-center">
@@ -145,9 +147,11 @@ export default function VictoryScreen({
             marginBottom: "8px",
           }}
         >
-          {isDaily
-            ? (solved ? "Daily Heat" : "Daily Heat")
-            : (solved ? getMedalLabel(medal) : "Better luck next time")}
+          {surrendered
+            ? "You waved the white flag"
+            : isDaily
+              ? "Daily Heat"
+              : (solved ? getMedalLabel(medal) : "Better luck next time")}
         </div>
         <div
           className="font-display"
@@ -311,13 +315,15 @@ export default function VictoryScreen({
         className="font-body"
         style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)" }}
       >
-        {isDaily
-          ? (solved
-              ? `Got in there in ${totalGuesses}`
-              : "This one got away.")
-          : (solved
-              ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
-              : `Used all ${totalGuesses} guesses`)}
+        {surrendered
+          ? "You gave up on this one"
+          : isDaily
+            ? (solved
+                ? `Got in there in ${totalGuesses}`
+                : "This one got away.")
+            : (solved
+                ? `Solved in ${totalGuesses} guess${totalGuesses !== 1 ? "es" : ""}`
+                : `Used all ${totalGuesses} guesses`)}
         {!isDaily && aids && ` · ${aids}`}
       </div>
 

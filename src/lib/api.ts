@@ -371,6 +371,9 @@ export async function evaluateGuess(params: {
   magnets_used: number;
   guess_number: number;
   is_daily?: boolean;
+  /** Prior guess rows (letters + positions). Sent on the final guess so the
+   *  server can detect a phoned-in "gave up" finish from locked-green retention. */
+  prior_guesses?: Array<Array<{ letter: string; position: number }>>;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return invokeWithRetry<any>("evaluate-guess", {
@@ -380,6 +383,27 @@ export async function evaluateGuess(params: {
     magnets_used: params.magnets_used,
     guess_number: params.guess_number,
     is_daily: params.is_daily || false,
+    prior_guesses: params.prior_guesses,
+  });
+}
+
+/**
+ * Record an explicit in-game surrender (the 🏳️ white flag) for a friendly
+ * puzzle. Creates the attempt with surrendered = true and reveals the answer.
+ */
+export async function surrenderGame(params: {
+  puzzle_id: string;
+  guess_number: number;
+  used_clue: boolean;
+  magnets_used: number;
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return invokeWithRetry<any>("evaluate-guess", {
+    puzzle_id: params.puzzle_id,
+    surrender: true,
+    guess_number: params.guess_number,
+    used_clue: params.used_clue,
+    magnets_used: params.magnets_used,
   });
 }
 

@@ -107,10 +107,8 @@ export default function PuzzleDetail({
     );
   };
 
-  const solverRow = (
-    s: PuzzleStats["solvers"][number],
-    failed: boolean,
-  ) => {
+  const solverRow = (s: PuzzleStats["solvers"][number]) => {
+    const outcome = s.medal ? getMedalEmoji(s.medal) : s.surrendered ? "🏳️" : "❌";
     const isOpen = expanded.has(s.user_id);
     const lettersOn = showLetters.has(s.user_id);
     const grid = s.guesses ?? [];
@@ -147,7 +145,7 @@ export default function PuzzleDetail({
             </span>
           </div>
           <div className="flex items-center shrink-0" style={{ gap: "8px" }}>
-            <span style={{ fontSize: "15px" }}>{failed ? "❌" : getMedalEmoji(s.medal)}</span>
+            <span style={{ fontSize: "15px" }}>{outcome}</span>
             <span className="font-mono" style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>
               {s.total_guesses}/6
             </span>
@@ -365,7 +363,8 @@ export default function PuzzleDetail({
               >
                 <div className="font-body" style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
                   <span style={{ whiteSpace: "nowrap" }}>🥇 solved</span> &nbsp;·&nbsp;
-                  <span style={{ whiteSpace: "nowrap" }}>❌ didn't solve</span>
+                  <span style={{ whiteSpace: "nowrap" }}>❌ stumped <span style={{ color: "rgba(255,255,255,0.3)" }}>(fought all 6)</span></span> &nbsp;·&nbsp;
+                  <span style={{ whiteSpace: "nowrap" }}>🏳️ gave up</span>
                 </div>
               </div>
 
@@ -392,7 +391,7 @@ export default function PuzzleDetail({
                     Solved
                   </div>
                   <div className="flex flex-col" style={{ gap: "8px" }}>
-                    {solved.map((s) => solverRow(s, false))}
+                    {solved.map((s) => solverRow(s))}
                   </div>
                 </>
               )}
@@ -404,7 +403,7 @@ export default function PuzzleDetail({
                     Didn't solve
                   </div>
                   <div className="flex flex-col" style={{ gap: "8px" }}>
-                    {notSolved.map((s) => solverRow(s, true))}
+                    {notSolved.map((s) => solverRow(s))}
                   </div>
                 </>
               )}

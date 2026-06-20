@@ -247,7 +247,7 @@ export default function App() {
     // Build completedPuzzles map from attempts
     const { data: attempts } = await supabase
       .from("attempts")
-      .select("puzzle_id, medal, is_own_puzzle")
+      .select("puzzle_id, medal, is_own_puzzle, surrendered")
       .eq("user_id", user.id);
 
     const completed: Record<string, CompletionStatus> = {};
@@ -257,6 +257,8 @@ export default function App() {
         completed[pid] = "submitted";
       } else if (a.medal) {
         completed[pid] = a.medal as CompletionStatus;
+      } else if (a.surrendered) {
+        completed[pid] = "surrendered";
       } else {
         completed[pid] = "failed";
       }
@@ -398,8 +400,9 @@ export default function App() {
     rows: CompletedRow[],
     revealedWord?: string,
     revealedDefinition?: string,
+    surrendered = false,
   ) => {
-    const rd: ResultData = { totalGuesses, medal, usedClue, magnetsUsed, rows };
+    const rd: ResultData = { totalGuesses, medal, usedClue, magnetsUsed, rows, surrendered };
     let finalPuzzle = selectedPuzzle;
 
     if (gameMode === "daily") {
@@ -426,7 +429,9 @@ export default function App() {
     } else if (selectedPuzzle) {
       // Friendly mode — existing logic
       const isOwn = selectedPuzzle.creator_id === user?.id;
-      const status: CompletionStatus = isOwn ? "submitted" : (medal || "failed");
+      const status: CompletionStatus = isOwn
+        ? "submitted"
+        : medal || (surrendered ? "surrendered" : "failed");
       setCompletedPuzzles((prev) => ({
         ...prev,
         [selectedPuzzle.id]: status,
@@ -982,6 +987,7 @@ export default function App() {
           usedClue={resultData.usedClue}
           magnetsUsed={resultData.magnetsUsed}
           rows={resultData.rows}
+          surrendered={resultData.surrendered}
           onBack={back}
           creatorStreak={gameMode === "daily" ? 0 : (selectedPuzzle.creator_id ? streaks[selectedPuzzle.creator_id]?.current_streak || 0 : 0)}
           groupId={selectedGroupId}
