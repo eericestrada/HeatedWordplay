@@ -16,6 +16,7 @@ import DailyHeatCard from "./components/DailyHeatCard";
 import WordMasterScreen from "./components/WordMasterScreen";
 import EditorScheduleScreen from "./components/EditorScheduleScreen";
 import MyWords from "./components/MyWords";
+import PuzzleDetail from "./components/PuzzleDetail";
 import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord, getCreatorStats } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import { buildEmojiGrid } from "./utils/sharing";
@@ -31,6 +32,7 @@ import type {
   SubmitWordData,
   PairStreak,
   GameMode,
+  DetailTab,
   ResultData,
   CreatorStats,
   DailyHeatState,
@@ -495,9 +497,10 @@ export default function App() {
   const myWordsSummary = summarizeMyWords(myWordRows);
 
   const openMyWords = () => navigate({ screen: "mywords" });
-  // Sharing a draft reuses the existing ShareScreen (rendered by "submitted").
-  const handleShareDraft = (p: Puzzle) =>
-    navigate({ screen: "submitted", puzzle: p, submittedPuzzleId: String(p.id) });
+  // Own words open the tabbed Puzzle detail — Results by default, Share for
+  // drafts (which have nothing to show under Results yet).
+  const openDetail = (p: Puzzle, detailTab: DetailTab) =>
+    navigate({ screen: "detail", puzzle: p, detailTab });
 
   // ===== app bar (authenticated, non-play screens) =====
   const appBar = (
@@ -1038,11 +1041,27 @@ export default function App() {
           summary={myWordsSummary}
           puzzles={puzzles}
           loading={creatorLoading}
-          onOpenPuzzle={(p) => navigate({ screen: "review", puzzle: p })}
-          onShareDraft={handleShareDraft}
+          onOpenPuzzle={(p) => openDetail(p, "results")}
+          onShareDraft={(p) => openDetail(p, "share")}
           onCreateNew={() => navigate({ screen: "submit" })}
         />
       )}
+      {screen === "detail" && selectedPuzzle && (() => {
+        const row = myWordRows.find((r) => r.puzzleId === String(selectedPuzzle.id));
+        const detailNotShared = row ? (!row.isPublic && !row.hasShares) : false;
+        const detailNewSolvers = row ? row.newSolvers : 0;
+        return (
+          <PuzzleDetail
+            puzzle={selectedPuzzle}
+            groups={groups}
+            notShared={detailNotShared}
+            newSolvers={detailNewSolvers}
+            initialTab={top.detailTab ?? "results"}
+            onPlay={() => handleSelect(selectedPuzzle)}
+            onShared={fetchCreatorData}
+          />
+        );
+      })()}
       {screen === "submit" && (
         <SubmitWord onSubmit={handleSubmitWord} onBack={back} />
       )}

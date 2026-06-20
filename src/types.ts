@@ -136,7 +136,9 @@ export interface DictionaryEntry {
   definition: string;
 }
 
-export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "mywords" | "wordmaster" | "editor-schedule";
+export type Screen = "select" | "play" | "result" | "submit" | "submitted" | "groups" | "people" | "review" | "stats" | "mywords" | "detail" | "wordmaster" | "editor-schedule";
+
+export type DetailTab = "results" | "share";
 
 /**
  * One entry in the navigation back-stack. Each node carries the context its
@@ -149,6 +151,7 @@ export interface NavNode {
   resultData?: ResultData | null;
   gameMode?: GameMode;
   submittedPuzzleId?: string | null;
+  detailTab?: DetailTab;
 }
 
 export interface ConnectedUser {

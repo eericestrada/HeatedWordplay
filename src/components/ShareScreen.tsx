@@ -11,6 +11,11 @@ interface ShareScreenProps {
   puzzleId: string;
   groups: Array<{ id: string; name: string; invite_code: string }>;
   onDone: () => void;
+  /** When true, drop the "Puzzle created!" header/tiles and the Done button —
+   *  used to embed just the share controls inside the Puzzle detail's Share tab. */
+  embedded?: boolean;
+  /** Called after shares are successfully applied (lets the detail refresh). */
+  onShared?: () => void;
 }
 
 export default function ShareScreen({
@@ -18,6 +23,8 @@ export default function ShareScreen({
   puzzleId,
   groups,
   onDone,
+  embedded = false,
+  onShared,
 }: ShareScreenProps) {
   const { profile } = useAuth();
 
@@ -133,6 +140,7 @@ export default function ShareScreen({
 
       setSaving(false);
       setSaved(true);
+      onShared?.();
     } catch (err) {
       setSaving(false);
       setError(err instanceof Error ? err.message : "Failed to share puzzle");
@@ -149,48 +157,52 @@ export default function ShareScreen({
   return (
     <div
       className="flex flex-col items-center gap-5 max-w-[480px] mx-auto"
-      style={{ padding: "24px 20px", animation: "fadeUp 0.5s ease" }}
+      style={{ padding: embedded ? "4px 0" : "24px 20px", animation: "fadeUp 0.5s ease" }}
     >
-      {/* Header */}
-      <div style={{ fontSize: "40px", lineHeight: 1 }}>✨</div>
-      <div
-        className="font-display text-center"
-        style={{ fontSize: "22px", fontWeight: 700, color: "#f5f0e8" }}
-      >
-        Puzzle created!
-      </div>
-
-      {/* Word tiles */}
-      <div className="flex gap-1.5 justify-center">
-        {puzzle.word.split("").map((ch, i) => (
+      {!embedded && (
+        <>
+          {/* Header */}
+          <div style={{ fontSize: "40px", lineHeight: 1 }}>✨</div>
           <div
-            key={i}
-            className="font-mono font-bold flex items-center justify-center rounded-lg"
-            style={{
-              width: "clamp(32px, 9vw, 46px)",
-              height: "clamp(32px, 9vw, 46px)",
-              fontSize: "clamp(16px, 4.5vw, 22px)",
-              border: "2px solid rgba(45,138,78,0.4)",
-              backgroundColor: "rgba(45,138,78,0.08)",
-              color: "#f5f0e8",
-            }}
+            className="font-display text-center"
+            style={{ fontSize: "22px", fontWeight: 700, color: "#f5f0e8" }}
           >
-            {ch}
+            Puzzle created!
           </div>
-        ))}
-      </div>
 
-      {/* Difficulty score for the creator (new-scale puzzles) */}
-      {puzzle.difficultyBreakdown && (
-        <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
+          {/* Word tiles */}
+          <div className="flex gap-1.5 justify-center">
+            {puzzle.word.split("").map((ch, i) => (
+              <div
+                key={i}
+                className="font-mono font-bold flex items-center justify-center rounded-lg"
+                style={{
+                  width: "clamp(32px, 9vw, 46px)",
+                  height: "clamp(32px, 9vw, 46px)",
+                  fontSize: "clamp(16px, 4.5vw, 22px)",
+                  border: "2px solid rgba(45,138,78,0.4)",
+                  backgroundColor: "rgba(45,138,78,0.08)",
+                  color: "#f5f0e8",
+                }}
+              >
+                {ch}
+              </div>
+            ))}
+          </div>
+
+          {/* Difficulty score for the creator (new-scale puzzles) */}
+          {puzzle.difficultyBreakdown && (
+            <DifficultyBreakdownPanel breakdown={puzzle.difficultyBreakdown} score={puzzle.complexity} />
+          )}
+
+          <div
+            className="font-body text-center"
+            style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}
+          >
+            Now share it so others can play. The definition and inspo stay hidden until they solve it.
+          </div>
+        </>
       )}
-
-      <div
-        className="font-body text-center"
-        style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}
-      >
-        Now share it so others can play. The definition and inspo stay hidden until they solve it.
-      </div>
 
       {/* === Share Link (external) === */}
       <div className="w-full">
@@ -673,24 +685,26 @@ export default function ShareScreen({
           </div>
         )}
 
-        {/* Done / Back button */}
-        <button
-          onClick={onDone}
-          className="font-body w-full rounded-lg"
-          style={{
-            fontSize: "14px",
-            fontWeight: 600,
-            padding: "12px 32px",
-            border: "1px solid rgba(255,180,60,0.3)",
-            background: "rgba(255,180,60,0.08)",
-            color: "rgba(255,180,60,0.9)",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {saved || !hasShares ? "Back to puzzles" : "Skip sharing"}
-        </button>
+        {/* Done / Back button — only in the standalone create flow */}
+        {!embedded && (
+          <button
+            onClick={onDone}
+            className="font-body w-full rounded-lg"
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              padding: "12px 32px",
+              border: "1px solid rgba(255,180,60,0.3)",
+              background: "rgba(255,180,60,0.08)",
+              color: "rgba(255,180,60,0.9)",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {saved || !hasShares ? "Back to puzzles" : "Skip sharing"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -295,6 +295,24 @@ export async function getPuzzleStats(
 }
 
 /**
+ * Creator-scoped per-puzzle stats: solve rate, guess distribution, and the
+ * full solver list across ALL audiences (groups + individuals + public +
+ * link). Only the puzzle's creator may call this; returns null otherwise.
+ */
+export async function getCreatorPuzzleStats(
+  puzzleId: string,
+): Promise<PuzzleStats | null> {
+  const { data, error } = await supabase.rpc("get_creator_puzzle_stats", {
+    p_puzzle_id: puzzleId,
+  });
+  if (error) {
+    console.error("Failed to fetch creator puzzle stats:", error);
+    return null;
+  }
+  return data as PuzzleStats | null;
+}
+
+/**
  * Group leaderboard: ranks players by total score within a group.
  */
 export async function getGroupLeaderboard(
