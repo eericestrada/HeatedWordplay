@@ -236,9 +236,16 @@ Deno.serve(async (req: Request) => {
         const isOwnPuzzle = creatorId === user.id;
         const medal = getMedal(guessNumber, solved);
         const multiplier = getMultiplier(medal);
+        // Clamp magnets to the allowed range. The client counter can overshoot
+        // the intended max of 2 (e.g. a double-fired tap), and the
+        // attempts.magnets_used CHECK constraint (0..2) would then reject the
+        // ENTIRE insert — silently losing a completed game and leaving the
+        // puzzle un-closeable and replayable. Clamp so a valid solve always
+        // records. Penalty caps at the 2-magnet rate regardless.
+        const magnetsUsedClamped = Math.min(2, Math.max(0, Number(magnets_used) || 0));
         // Clues are free — no penalty for using them.
         const magnetPenalty =
-          magnets_used === 0 ? 1 : magnets_used === 1 ? 0.75 : 0.25;
+          magnetsUsedClamped === 0 ? 1 : magnetsUsedClamped === 1 ? 0.75 : 0.25;
         const score = isOwnPuzzle
           ? 0
           : Math.round(puzzleComplexity * multiplier * magnetPenalty);
@@ -252,14 +259,25 @@ Deno.serve(async (req: Request) => {
             medal: isOwnPuzzle ? null : medal,
             score,
             used_clue: !!used_clue,
-            magnets_used: magnets_used || 0,
+            magnets_used: magnetsUsedClamped,
             is_own_puzzle: isOwnPuzzle,
           })
           .select()
           .single();
 
-        if (attemptError) {
+        if (attemptError && attemptError.code !== "23505") {
+          // 23505 = unique_violation: a concurrent request already recorded
+          // this attempt — that's fine, the puzzle is genuinely complete.
+          // Any other failure means the result was NOT saved, so surface an
+          // error instead of returning a phantom win the client can't persist.
           console.error("Failed to create attempt:", attemptError);
+          return new Response(
+            JSON.stringify({ error: "Could not record your result — please try again." }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            },
+          );
         }
 
         responseData.medal = isOwnPuzzle ? null : medal;

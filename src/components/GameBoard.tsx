@@ -123,6 +123,16 @@ export default function GameBoard({
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState("");
 
+  // Prevents a double-fired magnet tap from counting one use twice. Mobile can
+  // fire touch + click, sending two requests before `magnetsUsed` updates,
+  // which pushed the count past the allowed max and broke the saved result.
+  const magnetInFlightRef = useRef(false);
+  // Set true the instant the game reaches a terminal state. The save-effect
+  // fires on the completedRows update inside processGuessResult — before
+  // `gameOver` flips ~3s later — so without this it would re-persist (and on
+  // reopen resurrect) a finished game, letting guesses run past the 6 cap.
+  const gameEndedRef = useRef(false);
+
   // Server-side evaluation for real puzzles (including daily) from other users.
   // Own puzzles and mock/local puzzles use client-side evaluation.
   const isOwnPuzzle = !!user && puzzle.creator_id === user.id;
@@ -131,8 +141,10 @@ export default function GameBoard({
 
   // Persist game state to localStorage whenever key state changes
   useEffect(() => {
-    // Don't save if game is over or no progress
-    if (gameOver || completedRows.length === 0) return;
+    // Don't save if the game has ended or there's no progress. gameEndedRef is
+    // checked because gameOver flips ~3s after the terminal guess, and this
+    // effect would otherwise re-save the just-cleared state.
+    if (gameEndedRef.current || gameOver || completedRows.length === 0) return;
     saveGame(puzzle.id, {
       completedRows,
       letterStates,
@@ -234,6 +246,14 @@ export default function GameBoard({
   };
 
   const useMagnet = async (ch: string) => {
+    // Cap at 2 and ignore a tap that's already in flight. A mobile double-fire
+    // (touch + click) would otherwise count one use twice and push magnets_used
+    // past the allowed max, which fails the server-side save of the result.
+    if (magnetInFlightRef.current || magnetsUsed >= 2) {
+      setMagnetMode(false);
+      return;
+    }
+    magnetInFlightRef.current = true;
     if (useServerEval) {
       // Server-side magnet — don't expose the answer
       setEvaluating(true);
@@ -269,6 +289,8 @@ export default function GameBoard({
           showMsg("Magnet error — try again");
         }
         setMagnetMode(false);
+      } finally {
+        magnetInFlightRef.current = false;
       }
     } else {
       // Client-side magnet (mock/local puzzles)
@@ -287,6 +309,7 @@ export default function GameBoard({
       if (targetPos === null) {
         showMsg("Already revealed!");
         setMagnetMode(false);
+        magnetInFlightRef.current = false;
         return;
       }
 
@@ -298,6 +321,7 @@ export default function GameBoard({
           ? "🧲 Magnet used — 25% penalty"
           : "🧲 Magnet used — 50% penalty",
       );
+      magnetInFlightRef.current = false;
     }
   };
 
@@ -344,6 +368,10 @@ export default function GameBoard({
 
       const revealDuration = wordLength * 350 + 200;
       if (solved || newTotal >= MAX_GUESSES) {
+        // Mark terminal synchronously so the save-effect (which fires on the
+        // setCompletedRows above, before gameOver flips) can't re-persist and
+        // resurrect a finished game on reopen.
+        gameEndedRef.current = true;
         // Clear saved game state — puzzle is complete
         clearSavedGame(puzzle.id);
         setTimeout(() => {
