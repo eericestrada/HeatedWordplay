@@ -21,6 +21,66 @@ function outcomeDetail(w: H2HWord): { text: string; color: string } {
   return { text: "stumped", color: "rgba(255,255,255,0.35)" };
 }
 
+// Guess-distribution buckets: 1–6 for solved-in-N, plus ✗ for not solved
+// (stumped or gave up). Colors warm from green → red across the columns.
+const GUESS_BUCKETS: { short: string; color: string }[] = [
+  { short: "1", color: "#2d8a4e" },
+  { short: "2", color: "rgba(120,200,80,0.85)" },
+  { short: "3", color: "rgba(200,200,70,0.85)" },
+  { short: "4", color: "rgba(255,180,60,0.85)" },
+  { short: "5", color: "rgba(255,130,60,0.85)" },
+  { short: "6", color: "rgba(255,100,60,0.85)" },
+  { short: "✗", color: "rgba(255,90,90,0.9)" },
+];
+
+// One representative score per difficulty tier, in order, so the tier rows
+// derive their icon/color/label from getDifficultyTier (no re-hardcoding).
+const TIER_REPS = [10, 15, 18, 22, 30];
+
+interface TierBar { label: string; icon: string; color: string; count: number; pct: number }
+interface GuessBar { short: string; color: string; count: number; pct: number }
+
+/**
+ * Two distributions over a set of words, both bar-normalized to their own max
+ * so the tallest bar fills the row/plot:
+ *  - tiers: difficulty spread (only v1-scored words have a tier, matching the
+ *    per-row icon convention); hasScored is false when none qualify.
+ *  - guesses: how many guesses solves took, with a ✗ column for non-solves.
+ */
+function computeDistributions(words: H2HWord[]): {
+  tiers: TierBar[];
+  hasScored: boolean;
+  guesses: GuessBar[];
+} {
+  const scored = words.filter((w) => w.has_breakdown);
+  const tierCounts = TIER_REPS.map((rep) => {
+    const t = getDifficultyTier(rep);
+    const count = scored.filter(
+      (w) => getDifficultyTier(w.complexity).label === t.label,
+    ).length;
+    return { label: t.label, icon: t.icon, color: t.color, count };
+  });
+  const tierMax = Math.max(1, ...tierCounts.map((b) => b.count));
+  const tiers = tierCounts.map((b) => ({ ...b, pct: Math.round((b.count / tierMax) * 100) }));
+
+  const counts = GUESS_BUCKETS.map((_, i) => {
+    if (i === GUESS_BUCKETS.length - 1) return words.filter((w) => !w.medal).length;
+    const n = i + 1;
+    return words.filter(
+      (w) => w.medal && Math.min(Math.max(w.total_guesses, 1), 6) === n,
+    ).length;
+  });
+  const gMax = Math.max(1, ...counts);
+  const guesses = GUESS_BUCKETS.map((b, i) => ({
+    short: b.short,
+    color: b.color,
+    count: counts[i],
+    pct: Math.round((counts[i] / gMax) * 100),
+  }));
+
+  return { tiers, hasScored: scored.length > 0, guesses };
+}
+
 export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHeadProps) {
   const { profile } = useAuth();
   const [data, setData] = useState<H2HData | null>(null);
@@ -43,6 +103,8 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
   const theirs = data?.theirs ?? [];
   const yoursSolved = yours.filter((w) => w.medal).length;
   const theirsSolved = theirs.filter((w) => w.medal).length;
+  const activeWords = view === "yours" ? yours : theirs;
+  const dist = computeDistributions(activeWords);
 
   const avatar = (label: string, bg: string, color: string, size = 42) => (
     <span
@@ -160,6 +222,57 @@ export default function HeadToHead({ partnerId, partnerName, streak }: HeadToHea
           );
         })}
       </div>
+
+      {/* Distributions over the active direction — recompute when the toggle flips */}
+      {!loading && activeWords.length > 0 && (
+        <div style={{ marginBottom: "20px" }}>
+          {dist.hasScored && (
+            <>
+              <div
+                className="font-mono uppercase"
+                style={{ fontSize: "9px", letterSpacing: "0.12em", color: "rgba(255,255,255,0.3)", marginBottom: "9px" }}
+              >
+                How hard were they?
+              </div>
+              <div className="flex flex-col" style={{ gap: "6px", marginBottom: "20px" }}>
+                {dist.tiers.map((d) => (
+                  <div key={d.label} className="flex items-center" style={{ gap: "8px" }}>
+                    <span className="font-mono" style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", width: "84px" }}>
+                      {d.icon} {d.label}
+                    </span>
+                    <div style={{ flex: 1, height: "13px", borderRadius: "3px", background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: "3px", width: `${d.pct}%`, background: d.color, transition: "width 0.3s ease" }} />
+                    </div>
+                    <span className="font-mono" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", width: "14px", textAlign: "right" }}>
+                      {d.count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div
+            className="font-mono uppercase"
+            style={{ fontSize: "9px", letterSpacing: "0.12em", color: "rgba(255,255,255,0.3)", marginBottom: "10px" }}
+          >
+            Guesses to solve
+          </div>
+          <div className="flex items-end" style={{ gap: "6px", height: "96px", padding: "0 2px" }}>
+            {dist.guesses.map((g) => (
+              <div
+                key={g.short}
+                className="flex flex-col items-center"
+                style={{ flex: 1, gap: "4px", height: "100%", justifyContent: "flex-end" }}
+              >
+                <span className="font-mono" style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>{g.count}</span>
+                <div style={{ width: "100%", borderRadius: "4px 4px 0 0", height: `${g.pct}%`, background: g.color, minHeight: "3px", transition: "height 0.3s ease" }} />
+                <span className="font-mono" style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>{g.short}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="font-body text-center" style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", padding: "20px" }}>
