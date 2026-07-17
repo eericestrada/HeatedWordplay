@@ -283,6 +283,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Check whether this user has already submitted this word before
+    const { data: priorPuzzles } = await supabaseAdmin
+      .from("puzzles")
+      .select("created_at")
+      .eq("creator_id", user.id)
+      .eq("word", upperWord)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (priorPuzzles && priorPuzzles.length > 0) {
+      const submittedOn = new Date(priorPuzzles[0].created_at).toLocaleDateString(
+        "en-US",
+        { year: "numeric", month: "long", day: "numeric" },
+      );
+      return new Response(
+        JSON.stringify({
+          error: `Sorry, but you've already submitted this word before on ${submittedOn}.`,
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     const { difficulty, breakdown } = await computeDifficulty(supabaseAdmin, upperWord);
 
     // Create the puzzle
