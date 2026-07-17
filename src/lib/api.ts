@@ -101,6 +101,39 @@ export async function lookupWord(
 }
 
 /**
+ * Check whether the current user has already submitted this word.
+ * Returns the formatted date of their earliest prior submission, or null
+ * if they have never submitted it. RLS scopes the query to the user's own
+ * puzzles, so this only ever matches words this user created.
+ */
+export async function findPriorSubmissionDate(
+  word: string,
+): Promise<string | null> {
+  const upper = word.toUpperCase().trim();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("puzzles")
+    .select("created_at")
+    .eq("creator_id", user.id)
+    .eq("word", upper)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (error || !data || data.length === 0) return null;
+
+  return new Date(data[0].created_at).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
  * Submit a new puzzle via Edge Function.
  * Uses supabase.functions.invoke() for automatic auth and CORS handling.
  */

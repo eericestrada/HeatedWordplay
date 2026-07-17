@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { SubmitWordData, DictionaryEntry } from "../types";
-import { lookupWord, submitPuzzle } from "../lib/api";
+import { lookupWord, submitPuzzle, findPriorSubmissionDate } from "../lib/api";
 
 type Step = "enter" | "pick" | "clue" | "inspo" | "review";
 
@@ -44,6 +44,14 @@ export default function SubmitWord({ onSubmit }: SubmitWordProps) {
     setSubmitting(true);
     setError("");
     try {
+      const priorDate = await findPriorSubmissionDate(upper);
+      if (priorDate) {
+        setSubmitting(false);
+        setError(
+          `Sorry, but you've already submitted this word before on ${priorDate}.`,
+        );
+        return;
+      }
       const defs = await lookupWord(upper);
       setSubmitting(false);
       if (!defs) {
