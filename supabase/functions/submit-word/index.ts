@@ -152,24 +152,47 @@ interface ShareTarget {
   allow_reshare: boolean;
 }
 
+// A 404 from dictionaryapi.dev is authoritative: no such word. Any other
+// failure (5xx, 429, network, timeout) is transient — the service is free and
+// returns intermittent 502s on real words. Reporting those as "invalid" told
+// creators their perfectly good word wasn't a word, so they're surfaced as
+// "unavailable" and handled separately by the caller.
 async function lookupWord(
   word: string,
-): Promise<{ valid: boolean; meanings?: DictionaryMeaning[] }> {
-  try {
-    const res = await fetch(
-      `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`,
+): Promise<
+  { status: "valid"; meanings?: DictionaryMeaning[] }
+  | { status: "invalid" }
+  | { status: "unavailable" }
+> {
+  const url =
+    `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`;
+  const ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+
+      if (res.status === 404) return { status: "invalid" };
+
+      if (res.ok) {
+        const data: DictionaryResponse[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return { status: "valid", meanings: data[0].meanings };
+        }
+        if (attempt === ATTEMPTS) return { status: "unavailable" };
+      } else if (attempt === ATTEMPTS) {
+        return { status: "unavailable" };
+      }
+    } catch {
+      if (attempt === ATTEMPTS) return { status: "unavailable" };
+    }
+
+    await new Promise((r) =>
+      setTimeout(r, 250 * 2 ** (attempt - 1) + Math.random() * 125)
     );
-    if (!res.ok) {
-      return { valid: false };
-    }
-    const data: DictionaryResponse[] = await res.json();
-    if (!data || data.length === 0) {
-      return { valid: false };
-    }
-    return { valid: true, meanings: data[0].meanings };
-  } catch {
-    return { valid: false };
   }
+
+  return { status: "unavailable" };
 }
 
 Deno.serve(async (req: Request) => {
@@ -260,27 +283,40 @@ Deno.serve(async (req: Request) => {
 
     // Validate word exists in dictionary
     const lookup = await lookupWord(upperWord);
-    if (!lookup.valid) {
+    if (lookup.status === "invalid") {
       return new Response(
         JSON.stringify({ error: "Word not found in dictionary" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // Validate that the provided definition matches one from the dictionary
-    // (loose check — user picked it from the list)
-    const allDefs = (lookup.meanings || []).flatMap((m) =>
-      m.definitions.map((d) => d.definition),
-    );
-    const defMatch = allDefs.some(
-      (d) => d.toLowerCase().trim() === definition.toLowerCase().trim(),
-    );
-    if (!defMatch) {
-      // Allow it anyway — the user may have slightly edited, or the API
-      // might return different text. Log a warning but don't block.
+    if (lookup.status === "unavailable") {
+      // Fail open. The client only reaches this point after its own successful
+      // lookup produced the definition and part of speech it just sent, so the
+      // word was verified moments ago. Blocking here would reject a real word
+      // because of an upstream outage.
       console.warn(
-        `Definition mismatch for ${upperWord}: "${definition}" not found in API results`,
+        `Dictionary unavailable while validating ${upperWord} — accepting on client-supplied definition`,
       );
+    }
+
+    // Validate that the provided definition matches one from the dictionary
+    // (loose check — user picked it from the list). Skipped when the lookup
+    // never returned, since there's nothing to compare against.
+    if (lookup.status === "valid") {
+      const allDefs = (lookup.meanings || []).flatMap((m) =>
+        m.definitions.map((d) => d.definition),
+      );
+      const defMatch = allDefs.some(
+        (d) => d.toLowerCase().trim() === definition.toLowerCase().trim(),
+      );
+      if (!defMatch) {
+        // Allow it anyway — the user may have slightly edited, or the API
+        // might return different text. Log a warning but don't block.
+        console.warn(
+          `Definition mismatch for ${upperWord}: "${definition}" not found in API results`,
+        );
+      }
     }
 
     // Check whether this user has already submitted this word before

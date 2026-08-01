@@ -52,14 +52,23 @@ export default function SubmitWord({ onSubmit }: SubmitWordProps) {
         );
         return;
       }
-      const defs = await lookupWord(upper);
+      const lookup = await lookupWord(upper);
       setSubmitting(false);
-      if (!defs) {
+      if (lookup.status === "unavailable") {
+        // The dictionary didn't answer — don't tell the creator their word
+        // isn't real. This flow needs the definition list to continue, so
+        // there's nothing to fail open to; ask them to retry instead.
+        setError(
+          "The dictionary is unavailable right now. Please try again in a moment.",
+        );
+        return;
+      }
+      if (lookup.status === "invalid") {
         setError("Not found in dictionary. Try another word.");
         return;
       }
       setWord(upper);
-      setDefinitions(defs);
+      setDefinitions(lookup.entries);
       setError("");
       setStep("pick");
     } catch {

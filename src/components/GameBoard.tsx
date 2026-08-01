@@ -456,15 +456,29 @@ export default function GameBoard({
       // Log every submission on real shared friendly puzzles (skip mock/local,
       // own, and daily). Fire-and-forget — never blocks gameplay. The guess
       // number (current turn) is stamped so dead ends can be counted per turn.
-      if (useServerEval && !isDaily) {
-        void logSubmission(puzzle.id as string, !!dictResult, totalCount + 1);
+      //
+      // Only log when the dictionary actually gave a verdict. An "unavailable"
+      // lookup says nothing about the guess, and recording it as a dead end
+      // would inflate the puzzle's difficulty score with upstream-outage noise.
+      if (useServerEval && !isDaily && dictResult.status !== "unavailable") {
+        void logSubmission(
+          puzzle.id as string,
+          dictResult.status === "valid",
+          totalCount + 1,
+        );
       }
 
-      if (!dictResult) {
+      if (dictResult.status === "invalid") {
         setShake(true);
         showMsg("Not a valid word");
         setTimeout(() => setShake(false), 400);
         return;
+      }
+
+      // Dictionary unreachable after retries — let the guess through rather
+      // than blocking play on someone else's outage.
+      if (dictResult.status === "unavailable") {
+        showMsg("Dictionary offline — guess allowed");
       }
 
       const newTotal = totalCount + 1;

@@ -81,14 +81,20 @@ export default function WordMasterScreen() {
     setSubmitting(true);
     setError("");
     try {
-      const defs = await lookupWord(upper);
+      const lookup = await lookupWord(upper);
       setSubmitting(false);
-      if (!defs) {
+      if (lookup.status === "unavailable") {
+        setError(
+          "The dictionary is unavailable right now. Please try again in a moment.",
+        );
+        return;
+      }
+      if (lookup.status === "invalid") {
         setError("Not found in dictionary. Try another word.");
         return;
       }
       setWord(upper);
-      setDefinitions(defs);
+      setDefinitions(lookup.entries);
       setStep("pick");
     } catch {
       setSubmitting(false);

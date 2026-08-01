@@ -68,36 +68,84 @@ async function invokeWithRetry<T = unknown>(
 }
 
 /**
- * Look up a word using the free dictionary API.
- * Returns definitions or null if word not found.
+ * Outcome of a dictionary lookup.
+ *
+ * "invalid" and "unavailable" MUST stay distinct. dictionaryapi.dev is a free
+ * community service with no SLA and it returns intermittent 502s on perfectly
+ * real words. Collapsing a failed lookup into "not a word" is what made the
+ * game reject SICK, SILK, CAMPED and STUPID for players.
  */
-export async function lookupWord(
-  word: string,
-): Promise<DictionaryEntry[] | null> {
-  try {
-    const res = await fetch(
-      `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`,
-    );
-    if (!res.ok) return null;
+export type LookupResult =
+  | { status: "valid"; entries: DictionaryEntry[] }
+  | { status: "invalid" }
+  | { status: "unavailable" };
 
-    const data = await res.json();
-    if (!data || data.length === 0) return null;
+const LOOKUP_ATTEMPTS = 3;
+// The API normally answers in well under a second, and its characteristic
+// failure is a fast 502 rather than a hang. Keep this tight: the player is
+// staring at the grid, and the worst case is 3 timeouts back to back.
+const LOOKUP_TIMEOUT_MS = 3500;
 
-    const entries: DictionaryEntry[] = [];
-    for (const entry of data) {
-      for (const meaning of entry.meanings || []) {
-        for (const def of meaning.definitions || []) {
-          entries.push({
-            partOfSpeech: meaning.partOfSpeech,
-            definition: def.definition,
-          });
-        }
+function jitteredBackoff(attempt: number): number {
+  // 250ms, 500ms (+/- up to 125ms of jitter) so a burst of clients retrying
+  // after an upstream blip doesn't stampede in lockstep.
+  return 250 * 2 ** (attempt - 1) + Math.random() * 125;
+}
+
+function parseEntries(data: unknown): DictionaryEntry[] {
+  const entries: DictionaryEntry[] = [];
+  if (!Array.isArray(data)) return entries;
+  for (const entry of data) {
+    for (const meaning of entry?.meanings || []) {
+      for (const def of meaning?.definitions || []) {
+        entries.push({
+          partOfSpeech: meaning.partOfSpeech,
+          definition: def.definition,
+        });
       }
     }
-    return entries.length > 0 ? entries : null;
-  } catch {
-    return null;
   }
+  return entries;
+}
+
+/**
+ * Look up a word using the free dictionary API.
+ *
+ * A 404 is authoritative — the dictionary genuinely has no such word. Anything
+ * else (5xx, 429, network error, timeout) is a transient failure: retried with
+ * backoff, and reported as "unavailable" rather than "invalid" so callers can
+ * decide instead of silently calling a real word fake.
+ */
+export async function lookupWord(word: string): Promise<LookupResult> {
+  const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`;
+
+  for (let attempt = 1; attempt <= LOOKUP_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+      });
+
+      // Authoritative "no such word" — don't retry, don't second-guess it.
+      if (res.status === 404) return { status: "invalid" };
+
+      if (res.ok) {
+        const entries = parseEntries(await res.json());
+        // A 200 with an unparseable/empty payload is a service problem, not a
+        // verdict on the word.
+        if (entries.length > 0) return { status: "valid", entries };
+        if (attempt === LOOKUP_ATTEMPTS) return { status: "unavailable" };
+      } else if (attempt === LOOKUP_ATTEMPTS) {
+        return { status: "unavailable" };
+      }
+    } catch {
+      // Network error, timeout, or malformed JSON — all transient.
+      if (attempt === LOOKUP_ATTEMPTS) return { status: "unavailable" };
+    }
+
+    await new Promise((r) => setTimeout(r, jitteredBackoff(attempt)));
+  }
+
+  return { status: "unavailable" };
 }
 
 /**
