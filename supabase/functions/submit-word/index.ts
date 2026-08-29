@@ -152,39 +152,130 @@ interface ShareTarget {
   allow_reshare: boolean;
 }
 
-// A 404 from dictionaryapi.dev is authoritative: no such word. Any other
-// failure (5xx, 429, network, timeout) is transient — the service is free and
-// returns intermittent 502s on real words. Reporting those as "invalid" told
-// creators their perfectly good word wasn't a word, so they're surfaced as
-// "unavailable" and handled separately by the caller.
-async function lookupWord(
-  word: string,
-): Promise<
-  { status: "valid"; meanings?: DictionaryMeaning[] }
+// A healthy dictionaryapi.dev answers in well under a second. Its current
+// failure mode is slow, not flaky: the origin is unreachable, so Cloudflare
+// hangs for ~20s and returns a 522. Retrying a service in that state just
+// multiplies the wait, so the primary gets one short attempt and anything
+// other than a clean answer falls through to Wiktionary.
+const PRIMARY_TIMEOUT_MS = 3000;
+// Once the primary is down, every lookup would otherwise pay the full timeout
+// before falling back — a 3s tax on each guess for the length of an outage.
+// Skip it briefly after a failure instead; the window expiring re-probes it, so
+// this self-heals when the service comes back.
+const PRIMARY_COOLDOWN_MS = 60_000;
+let primaryDownUntil = 0;
+const FALLBACK_ATTEMPTS = 2;
+const FALLBACK_TIMEOUT_MS = 4000;
+const WIKTIONARY_UA = "HeatedWordplay/1.0 (word game dictionary lookup)";
+
+type LookupResult =
+  | { status: "valid"; meanings?: DictionaryMeaning[] }
   | { status: "invalid" }
-  | { status: "unavailable" }
-> {
+  | { status: "unavailable" };
+
+// Primary source. A 404 is authoritative: no such word. Anything else (5xx,
+// 429, network, timeout) is reported as "unavailable" so the caller can fall
+// back instead of treating an outage as a verdict on the word.
+async function lookupPrimary(word: string): Promise<LookupResult> {
+  if (Date.now() < primaryDownUntil) return { status: "unavailable" };
+
   const url =
     `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`;
-  const ATTEMPTS = 3;
 
-  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(PRIMARY_TIMEOUT_MS),
+    });
+
+    if (res.status === 404) {
+      primaryDownUntil = 0;
+      return { status: "invalid" };
+    }
+
+    if (res.ok) {
+      const data: DictionaryResponse[] = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        primaryDownUntil = 0;
+        return { status: "valid", meanings: data[0].meanings };
+      }
+    }
+  } catch {
+    // Network error, timeout, or malformed JSON — all transient.
+  }
+
+  primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS;
+  return { status: "unavailable" };
+}
+
+// Wiktionary returns definitions as HTML fragments (wikilinks, inflection
+// markup, formatting). Strip it so definitions compare against what the client
+// sent, which came through the same cleanup.
+function stripHtml(html: string): string {
+  return html
+    // Some entries embed a <style> block for inline templates; dropping only
+    // the tags would leave the CSS itself sitting in the definition text.
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseWiktionaryMeanings(data: unknown): DictionaryMeaning[] {
+  const meanings: DictionaryMeaning[] = [];
+  const english = (data as { en?: unknown })?.en;
+  if (!Array.isArray(english)) return meanings;
+  for (const group of english) {
+    // Wiktionary capitalises these ("Noun"); dictionaryapi.dev doesn't.
+    const partOfSpeech = String(group?.partOfSpeech || "").toLowerCase();
+    const definitions: Array<{ definition: string }> = [];
+    for (const def of group?.definitions || []) {
+      const definition = stripHtml(String(def?.definition || ""));
+      // Some entries carry an empty definition body (a bare inflection header).
+      if (!definition) continue;
+      definitions.push({ definition });
+    }
+    if (definitions.length > 0) meanings.push({ partOfSpeech, definitions });
+  }
+  return meanings;
+}
+
+// Fallback source. dictionaryapi.dev is itself built from Wiktionary data, so
+// this reaches the same corpus through infrastructure that isn't down — which
+// also makes a 404 here trustworthy.
+async function lookupFallback(word: string): Promise<LookupResult> {
+  const url = `https://en.wiktionary.org/api/rest_v1/page/definition/${
+    encodeURIComponent(word.toLowerCase())
+  }`;
+
+  for (let attempt = 1; attempt <= FALLBACK_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      const res = await fetch(url, {
+        headers: { "User-Agent": WIKTIONARY_UA },
+        signal: AbortSignal.timeout(FALLBACK_TIMEOUT_MS),
+      });
 
       if (res.status === 404) return { status: "invalid" };
 
       if (res.ok) {
-        const data: DictionaryResponse[] = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          return { status: "valid", meanings: data[0].meanings };
+        const data = await res.json();
+        // Page exists but has no English section — a word in another language.
+        if (!Array.isArray((data as { en?: unknown })?.en)) {
+          return { status: "invalid" };
         }
-        if (attempt === ATTEMPTS) return { status: "unavailable" };
-      } else if (attempt === ATTEMPTS) {
+        const meanings = parseWiktionaryMeanings(data);
+        if (meanings.length > 0) return { status: "valid", meanings };
+        if (attempt === FALLBACK_ATTEMPTS) return { status: "unavailable" };
+      } else if (attempt === FALLBACK_ATTEMPTS) {
         return { status: "unavailable" };
       }
     } catch {
-      if (attempt === ATTEMPTS) return { status: "unavailable" };
+      if (attempt === FALLBACK_ATTEMPTS) return { status: "unavailable" };
     }
 
     await new Promise((r) =>
@@ -193,6 +284,14 @@ async function lookupWord(
   }
 
   return { status: "unavailable" };
+}
+
+// Tries dictionaryapi.dev first, Wiktionary second. Only a verdict ends the
+// search; "unavailable" means neither provider answered.
+async function lookupWord(word: string): Promise<LookupResult> {
+  const primary = await lookupPrimary(word);
+  if (primary.status !== "unavailable") return primary;
+  return await lookupFallback(word);
 }
 
 Deno.serve(async (req: Request) => {
