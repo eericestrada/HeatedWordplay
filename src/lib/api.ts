@@ -12,6 +12,7 @@ import type {
   DailyWordMeta,
   DailyPoolWord,
   DailyPoolAnonymous,
+  HouseCandidateBatch,
 } from "../types";
 
 /**
@@ -687,12 +688,22 @@ export async function submitDailyWord(params: {
  */
 export async function fetchTodaysDailyWord(): Promise<DailyWordMeta | null> {
   const today = new Date().toLocaleDateString("en-CA");
-  const { data, error } = await supabase
-    .from("daily_words_calendar")
-    .select("id, scheduled_date, word_length, definition")
-    .eq("scheduled_date", today)
-    .in("status", ["scheduled", "used"])
-    .single();
+  const query = () =>
+    supabase
+      .from("daily_words_calendar")
+      .select("id, scheduled_date, word_length, definition")
+      .eq("scheduled_date", today)
+      .in("status", ["scheduled", "used"])
+      .maybeSingle();
+
+  let { data, error } = await query();
+  if (!error && !data) {
+    // Nothing scheduled — ask the server to pull a word from the House
+    // reserve (normally the cron job has already done this), then look again.
+    const { error: fillError } = await supabase.rpc("ensure_daily_word", { p_date: today });
+    if (fillError) console.error("ensure_daily_word failed:", fillError);
+    else ({ data, error } = await query());
+  }
 
   if (error || !data) return null;
   return {
@@ -715,7 +726,7 @@ export async function fetchMyDailyWords(): Promise<DailyPoolWord[]> {
 
   const { data, error } = await supabase
     .from("daily_words")
-    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at")
+    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at, source, auto_scheduled")
     .eq("submitted_by", user.id)
     .order("created_at", { ascending: false });
 
@@ -769,7 +780,7 @@ export async function updateDailyWord(
 export async function fetchAllDailyWords(): Promise<DailyPoolWord[]> {
   const { data, error } = await supabase
     .from("daily_words")
-    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at")
+    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at, source, auto_scheduled")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -785,7 +796,7 @@ export async function fetchAllDailyWords(): Promise<DailyPoolWord[]> {
 export async function scheduleDailyWord(id: string, date: string) {
   const { error } = await supabase
     .from("daily_words")
-    .update({ scheduled_date: date, status: "scheduled" })
+    .update({ scheduled_date: date, status: "scheduled", auto_scheduled: false })
     .eq("id", id);
   if (error) throw new Error(error.message || "Failed to schedule word");
 }
@@ -796,7 +807,37 @@ export async function scheduleDailyWord(id: string, date: string) {
 export async function unscheduleDailyWord(id: string) {
   const { error } = await supabase
     .from("daily_words")
-    .update({ scheduled_date: null, status: "pending" })
+    .update({ scheduled_date: null, status: "pending", auto_scheduled: false })
     .eq("id", id);
   if (error) throw new Error(error.message || "Failed to unschedule word");
+}
+
+// ---- House reserve (Editor-only; see the import-house-words Edge Function) ----
+
+/** Random frequency-list words in a 1-10 difficulty range, with definitions. */
+export async function suggestHouseWords(minDifficulty: number, maxDifficulty: number, count = 20) {
+  return invokeWithRetry<HouseCandidateBatch>("import-house-words", {
+    action: "suggest",
+    min_difficulty: minDifficulty,
+    max_difficulty: maxDifficulty,
+    count,
+  });
+}
+
+/** Look up the editor's own pasted words. */
+export async function previewHouseWords(words: string[]) {
+  return invokeWithRetry<HouseCandidateBatch>("import-house-words", { action: "preview", words });
+}
+
+export async function acceptHouseWord(c: { word: string; definition: string; part_of_speech: string }) {
+  return invokeWithRetry<{ id: string }>("import-house-words", { action: "accept", ...c });
+}
+
+export async function rejectHouseWord(word: string) {
+  return invokeWithRetry<{ ok: true }>("import-house-words", { action: "reject", word });
+}
+
+/** Fill empty days in the next few from the reserve right away. */
+export async function fillScheduleNow() {
+  return invokeWithRetry<{ filled: number }>("import-house-words", { action: "fill" });
 }

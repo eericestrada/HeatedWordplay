@@ -4,7 +4,12 @@ import {
   fetchAllDailyWords,
   scheduleDailyWord,
   unscheduleDailyWord,
+  fillScheduleNow,
 } from "../lib/api";
+import HouseImport from "./HouseImport";
+
+// Below this many reserve words, warn that auto-fill is running low.
+const LOW_RESERVE = 14;
 
 
 /** Generate an array of date strings (YYYY-MM-DD) for the next N days starting from today */
@@ -37,6 +42,9 @@ export default function EditorScheduleScreen() {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [draggedWordId, setDraggedWordId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const dates = getUpcomingDates(45);
 
@@ -47,12 +55,23 @@ export default function EditorScheduleScreen() {
     setLoading(false);
   }, []);
 
+  // Quiet refresh (no loading screen) while the import panel is open.
+  const refreshWords = useCallback(async () => {
+    setAllWords(await fetchAllDailyWords());
+  }, []);
+
   useEffect(() => {
     loadWords();
   }, [loadWords]);
 
-  // Pool words: pending (unscheduled)
-  const poolWords = allWords.filter((w) => w.status === "pending" && !w.scheduled_date);
+  // WordMaster pool: pending (unscheduled), hand-scheduled only
+  const poolWords = allWords.filter(
+    (w) => w.source !== "house" && w.status === "pending" && !w.scheduled_date,
+  );
+  // House reserve: what the scheduler draws from for empty days
+  const reserveCount = allWords.filter(
+    (w) => w.source === "house" && w.status === "pending" && !w.scheduled_date,
+  ).length;
 
   // Build a date->word map for scheduled words
   const scheduledByDate: Record<string, DailyPoolWord> = {};
@@ -83,6 +102,36 @@ export default function EditorScheduleScreen() {
       await loadWords();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unschedule");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleFillNow = async () => {
+    setFilling(true);
+    setError("");
+    setNotice("");
+    try {
+      const { filled } = await fillScheduleNow();
+      setNotice(filled ? `Filled ${filled} empty day${filled === 1 ? "" : "s"}` : "No empty days to fill");
+      await refreshWords();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fill schedule");
+    } finally {
+      setFilling(false);
+    }
+  };
+
+  // Send an auto-pick back to the reserve and let the scheduler draw another.
+  const handleSwap = async (wordId: string) => {
+    setSaving(wordId);
+    setError("");
+    try {
+      await unscheduleDailyWord(wordId);
+      await fillScheduleNow();
+      await refreshWords();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to swap");
     } finally {
       setSaving(null);
     }
@@ -147,9 +196,88 @@ export default function EditorScheduleScreen() {
           Schedule
         </div>
         <div className="font-body" style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)", marginTop: "4px" }}>
-          Drag words from the pool onto dates
+          Drag WordMaster words onto dates. Empty days are filled automatically from the House reserve.
         </div>
       </div>
+
+      {/* House reserve */}
+      <div
+        className="rounded-xl flex flex-col gap-2"
+        style={{
+          background: "rgba(255,255,255,0.02)",
+          border: reserveCount < LOW_RESERVE
+            ? "1px solid rgba(255,100,100,0.25)"
+            : "1px solid rgba(255,255,255,0.06)",
+          padding: "16px",
+        }}
+      >
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div
+              className="font-mono uppercase tracking-[0.12em]"
+              style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,180,60,0.5)" }}
+            >
+              House reserve ({reserveCount} word{reserveCount === 1 ? "" : "s"})
+            </div>
+            <div
+              className="font-body"
+              style={{
+                fontSize: "12px",
+                marginTop: "3px",
+                color: reserveCount < LOW_RESERVE ? "rgba(255,100,100,0.75)" : "rgba(255,255,255,0.35)",
+              }}
+            >
+              {reserveCount === 0
+                ? "Empty \u2014 days with no word will stay dark. Import some words."
+                : reserveCount < LOW_RESERVE
+                  ? `Running low \u2014 about ${reserveCount} day${reserveCount === 1 ? "" : "s"} of cover left.`
+                  : "Picked at random for any day with no word, up to 3 days ahead."}
+            </div>
+          </div>
+          <button
+            onClick={handleFillNow}
+            disabled={filling || reserveCount === 0}
+            className="font-body rounded-lg"
+            style={{
+              fontSize: "12px",
+              fontWeight: 500,
+              padding: "7px 12px",
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.03)",
+              color: filling || reserveCount === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.55)",
+              cursor: filling || reserveCount === 0 ? "default" : "pointer",
+            }}
+          >
+            {filling ? "Filling..." : "Fill empty days now"}
+          </button>
+          {!importing && (
+            <button
+              onClick={() => setImporting(true)}
+              className="font-body rounded-lg"
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "7px 12px",
+                border: "1px solid rgba(255,180,60,0.3)",
+                background: "rgba(255,180,60,0.1)",
+                color: "rgba(255,180,60,0.9)",
+                cursor: "pointer",
+              }}
+            >
+              Import words
+            </button>
+          )}
+        </div>
+        {notice && (
+          <div className="font-body" style={{ fontSize: "12px", color: "rgba(45,138,78,0.9)" }}>
+            {notice}
+          </div>
+        )}
+      </div>
+
+      {importing && (
+        <HouseImport onClose={() => setImporting(false)} onAccepted={refreshWords} />
+      )}
 
       {error && (
         <div
@@ -183,7 +311,7 @@ export default function EditorScheduleScreen() {
           className="font-mono uppercase tracking-[0.12em] mb-3"
           style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,180,60,0.5)" }}
         >
-          Word Pool ({poolWords.length} pending)
+          WordMaster Pool ({poolWords.length} pending)
         </div>
         {poolWords.length === 0 ? (
           <div className="font-body" style={{ fontSize: "13px", color: "rgba(255,255,255,0.25)" }}>
@@ -295,6 +423,21 @@ export default function EditorScheduleScreen() {
                     >
                       {scheduled.definition.slice(0, 30)}{scheduled.definition.length > 30 ? "..." : ""}
                     </div>
+                    {scheduled.source === "house" && (
+                      <span
+                        className="font-mono rounded-full shrink-0"
+                        title={scheduled.auto_scheduled ? "Picked automatically from the House reserve" : "House word"}
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 600,
+                          padding: "2px 6px",
+                          color: "rgba(26,158,158,0.95)",
+                          background: "rgba(26,158,158,0.12)",
+                        }}
+                      >
+                        {scheduled.auto_scheduled ? "House \u00B7 auto" : "House"}
+                      </span>
+                    )}
                     {scheduled.status === "used" && (
                       <span
                         className="font-mono rounded-full shrink-0"
@@ -308,6 +451,25 @@ export default function EditorScheduleScreen() {
                       >
                         Used
                       </span>
+                    )}
+                    {scheduled.status === "scheduled" && !isPast && scheduled.source === "house" && (
+                      <button
+                        onClick={() => handleSwap(scheduled.id)}
+                        disabled={!!saving}
+                        title="Swap for another House word"
+                        aria-label="Swap for another House word"
+                        className="font-body shrink-0 ml-auto"
+                        style={{
+                          fontSize: "12px",
+                          color: "rgba(255,255,255,0.45)",
+                          background: "none",
+                          border: "none",
+                          cursor: saving ? "default" : "pointer",
+                          padding: "2px 6px",
+                        }}
+                      >
+                        {saving === scheduled.id ? "..." : "\u21BB"}
+                      </button>
                     )}
                     {scheduled.status === "scheduled" && !isPast && (
                       <button

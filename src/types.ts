@@ -4,6 +4,9 @@ export type AppRole = "player" | "wordmaster" | "editor";
 
 export type DailyWordStatus = "pending" | "scheduled" | "used" | "skipped";
 
+/** Who a pool word came from. House words form the auto-schedule reserve. */
+export type DailyWordSource = "wordmaster" | "house";
+
 export interface DailyWord {
   id: string;
   word: string;
@@ -29,6 +32,25 @@ export interface DailyPoolWord {
   status: DailyWordStatus;
   scheduled_date: string | null;
   created_at: string;
+  source: DailyWordSource;
+  /** Placed on its date by the scheduler rather than an editor */
+  auto_scheduled: boolean;
+}
+
+/** A House import candidate: looked up, not yet stored */
+export interface HouseCandidate {
+  word: string;
+  part_of_speech: string;
+  definition: string;
+  /** 1 (very common) .. 10 (very rare); null when the word isn't in the frequency list */
+  difficulty: number | null;
+}
+
+export interface HouseCandidateBatch {
+  candidates: HouseCandidate[];
+  skipped: Array<{ word: string; reason: string }>;
+  /** The dictionary rate-limited the lookups, so the batch came back short */
+  throttled?: boolean;
 }
 
 /** Anonymous entry visible to other WordMasters — no word/definition */
