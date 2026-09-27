@@ -86,6 +86,27 @@ export function updateDailyStreak(playedDate: string, solved: boolean): StoredDa
 }
 
 /**
+ * Days with no Daily at all shouldn't break a streak. If the last solved day
+ * is before yesterday, ask `hadDaily(lastDate, today)` whether any word was
+ * scheduled in between; if none was, move lastDate up to yesterday so the
+ * streak carries on. Also revives streaks already shown as broken by a gap,
+ * as long as the player hasn't played since.
+ */
+export async function bridgeStreakOverEmptyDays(
+  hadDaily: (after: string, before: string) => Promise<boolean | null>,
+): Promise<void> {
+  const streak = getDailyStreak();
+  const yesterday = yesterdayStr();
+  if (streak.current <= 0 || !streak.lastDate || streak.lastDate >= yesterday) return;
+  if ((await hadDaily(streak.lastDate, todayStr())) !== false) return;
+  try {
+    localStorage.setItem(DAILY_STREAK_KEY, JSON.stringify({ ...streak, lastDate: yesterday }));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
  * Compute the current DailyHeatState from localStorage.
  */
 export function computeDailyHeatState(dailyDate: string) {

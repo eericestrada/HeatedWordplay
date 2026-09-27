@@ -35,6 +35,8 @@ export interface DailyPoolWord {
   source: DailyWordSource;
   /** Placed on its date by the scheduler rather than an editor */
   auto_scheduled: boolean;
+  /** Picked by the system when the reserve ran low — never reviewed */
+  auto_added: boolean;
 }
 
 /** A House import candidate: looked up, not yet stored */

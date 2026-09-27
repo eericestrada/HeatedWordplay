@@ -11,9 +11,12 @@
 //   { action: "accept", word, definition, part_of_speech, difficulty? }
 //       -> { id }                   adds the word to the reserve
 //   { action: "reject", word }      -> { ok }  never suggest it again
-//   { action: "fill", days? }       -> { filled }  fill empty days now:
+//   { action: "fill", days?, generate? } -> { filled }  fill empty days now:
 //       days = N fills empty days in the next N (default 3); "all" keeps going
-//       until the reserve runs out
+//       until the reserve runs out. generate = true lets the database auto-pick
+//       words if the reserve is dry (used by swap); editor fills don't.
+//   { action: "discard", id }       -> { ok }  delete an unplayed House word
+//       and never pick it again (for bad auto-picks)
 //
 // Candidates are only looked up, never stored — nothing reaches the reserve
 // without an explicit accept.
@@ -459,12 +462,33 @@ Deno.serve(async (req: Request) => {
         const days = body.days === "all"
           ? MAX_FILL_DAYS
           : Math.max(1, Math.min(MAX_FILL_DAYS, Math.round(Number(body.days) || 3)));
-        const { data, error } = await admin.rpc("fill_daily_schedule", { p_days: days });
+        const { data, error } = await admin.rpc("fill_daily_schedule", {
+          p_days: days,
+          p_generate: body.generate === true,
+        });
         if (error) {
           console.error("fill_daily_schedule failed:", error);
           return json({ error: "Failed to fill the schedule" }, 500);
         }
         return json({ filled: data ?? 0 });
+      }
+
+      case "discard": {
+        const id = String(body.id || "");
+        const { data: row } = await admin
+          .from("daily_words").select("word, source, status").eq("id", id).maybeSingle();
+        if (!row || row.source !== "house") return json({ error: "Not a House word" }, 404);
+        if (row.status === "used") return json({ error: "Already played; can't discard" }, 409);
+
+        await admin
+          .from("house_word_rejects")
+          .upsert({ word: row.word, rejected_by: user.id }, { onConflict: "word" });
+        const { error } = await admin.from("daily_words").delete().eq("id", id).neq("status", "used");
+        if (error) {
+          console.error("Discard failed:", error);
+          return json({ error: "Failed to discard word" }, 500);
+        }
+        return json({ ok: true });
       }
 
       default:

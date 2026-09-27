@@ -5,6 +5,7 @@ import {
   scheduleDailyWord,
   unscheduleDailyWord,
   fillScheduleNow,
+  discardHouseWord,
 } from "../lib/api";
 import HouseImport from "./HouseImport";
 
@@ -72,9 +73,11 @@ export default function EditorScheduleScreen() {
     (w) => w.source !== "house" && w.status === "pending" && !w.scheduled_date,
   );
   // House reserve: what the scheduler draws from for empty days
-  const reserveCount = allWords.filter(
+  const reserveWords = allWords.filter(
     (w) => w.source === "house" && w.status === "pending" && !w.scheduled_date,
-  ).length;
+  );
+  const reserveCount = reserveWords.length;
+  const autoPickedCount = reserveWords.filter((w) => w.auto_added).length;
 
   // Build a date->word map for scheduled words
   const scheduledByDate: Record<string, DailyPoolWord> = {};
@@ -146,15 +149,18 @@ export default function EditorScheduleScreen() {
     }
   };
 
-  // Send an auto-pick back to the reserve and let the scheduler draw another.
-  // Fill far enough out to reach the swapped day, wherever it is.
-  const handleSwap = async (wordId: string, date: string) => {
-    setSaving(wordId);
+  // Swap a House word for another. A reviewed word goes back to the reserve;
+  // an unreviewed auto-pick is discarded for good. Fill far enough out to
+  // reach the swapped day, and let the database auto-pick if the reserve is dry
+  // so a swap never leaves a hole.
+  const handleSwap = async (word: DailyPoolWord, date: string) => {
+    setSaving(word.id);
     setError("");
     try {
-      await unscheduleDailyWord(wordId);
+      if (word.auto_added) await discardHouseWord(word.id);
+      else await unscheduleDailyWord(word.id);
       const daysOut = Math.round((Date.parse(date) - Date.parse(todayStr)) / 86_400_000) + 1;
-      await fillScheduleNow(Math.max(3, daysOut));
+      await fillScheduleNow(Math.max(3, daysOut), true);
       await refreshWords();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to swap");
@@ -243,7 +249,8 @@ export default function EditorScheduleScreen() {
               className="font-mono uppercase tracking-[0.12em]"
               style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,180,60,0.5)" }}
             >
-              House reserve ({reserveCount} word{reserveCount === 1 ? "" : "s"})
+              House reserve ({reserveCount} word{reserveCount === 1 ? "" : "s"}
+              {autoPickedCount > 0 ? `, ${autoPickedCount} auto-picked` : ""})
             </div>
             <div
               className="font-body"
@@ -258,6 +265,7 @@ export default function EditorScheduleScreen() {
                 : coverDays < LOW_COVER
                   ? `Running low \u2014 about ${coverDays} day${coverDays === 1 ? "" : "s"} of cover left.`
                   : `About ${coverDays} days of cover. Empty days are auto-filled up to 3 days ahead.`}
+              {" "}If the reserve drops to 2, the system adds its own words.
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -483,16 +491,22 @@ export default function EditorScheduleScreen() {
                     {scheduled.source === "house" && (
                       <span
                         className="font-mono rounded-full shrink-0"
-                        title={scheduled.auto_scheduled ? "Picked automatically from the House reserve" : "House word"}
+                        title={
+                          scheduled.auto_added
+                            ? "Chosen by the system when the reserve ran low \u2014 not reviewed. \u21BB discards it."
+                            : scheduled.auto_scheduled
+                              ? "Picked automatically from the House reserve"
+                              : "House word"
+                        }
                         style={{
                           fontSize: "9px",
                           fontWeight: 600,
                           padding: "2px 6px",
-                          color: "rgba(26,158,158,0.95)",
-                          background: "rgba(26,158,158,0.12)",
+                          color: scheduled.auto_added ? "rgba(255,180,60,0.95)" : "rgba(26,158,158,0.95)",
+                          background: scheduled.auto_added ? "rgba(255,180,60,0.12)" : "rgba(26,158,158,0.12)",
                         }}
                       >
-                        {scheduled.auto_scheduled ? "House \u00B7 auto" : "House"}
+                        {scheduled.auto_added ? "Auto-picked" : scheduled.auto_scheduled ? "House \u00B7 auto" : "House"}
                       </span>
                     )}
                     {scheduled.status === "used" && (
@@ -511,10 +525,10 @@ export default function EditorScheduleScreen() {
                     )}
                     {scheduled.status === "scheduled" && !isPast && scheduled.source === "house" && (
                       <button
-                        onClick={() => handleSwap(scheduled.id, date)}
+                        onClick={() => handleSwap(scheduled, date)}
                         disabled={!!saving}
-                        title="Swap for another House word"
-                        aria-label="Swap for another House word"
+                        title={scheduled.auto_added ? "Discard and pick another word" : "Swap for another House word"}
+                        aria-label={scheduled.auto_added ? "Discard and pick another word" : "Swap for another House word"}
                         className="font-body shrink-0 ml-auto"
                         style={{
                           fontSize: "12px",

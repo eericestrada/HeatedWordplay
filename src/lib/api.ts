@@ -780,7 +780,7 @@ export async function updateDailyWord(
 export async function fetchAllDailyWords(): Promise<DailyPoolWord[]> {
   const { data, error } = await supabase
     .from("daily_words")
-    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at, source, auto_scheduled")
+    .select("id, word, definition, part_of_speech, status, scheduled_date, created_at, source, auto_scheduled, auto_added")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -839,8 +839,33 @@ export async function rejectHouseWord(word: string) {
 
 /**
  * Fill empty days from the reserve right away: the next `days` days (default
- * 3), or "all" to keep going until the reserve is used up.
+ * 3), or "all" to keep going until the reserve is used up. `generate` lets the
+ * database auto-pick words if the reserve is dry.
  */
-export async function fillScheduleNow(days: number | "all" = 3) {
-  return invokeWithRetry<{ filled: number }>("import-house-words", { action: "fill", days });
+export async function fillScheduleNow(days: number | "all" = 3, generate = false) {
+  return invokeWithRetry<{ filled: number }>("import-house-words", { action: "fill", days, generate });
+}
+
+/** Delete an unplayed House word and never pick it again. */
+export async function discardHouseWord(id: string) {
+  return invokeWithRetry<{ ok: true }>("import-house-words", { action: "discard", id });
+}
+
+/**
+ * Whether any Daily was scheduled strictly between two dates. Used to keep
+ * streaks alive across days that had no word to play.
+ */
+export async function hadDailyBetween(after: string, before: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from("daily_words_calendar")
+    .select("id")
+    .gt("scheduled_date", after)
+    .lt("scheduled_date", before)
+    .in("status", ["scheduled", "used"])
+    .limit(1);
+  if (error) {
+    console.error("Failed to check for Daily gaps:", error);
+    return null;
+  }
+  return (data || []).length > 0;
 }

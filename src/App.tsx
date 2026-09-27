@@ -18,10 +18,10 @@ import EditorScheduleScreen from "./components/EditorScheduleScreen";
 import MyWords from "./components/MyWords";
 import PuzzleDetail from "./components/PuzzleDetail";
 import HeadToHead from "./components/HeadToHead";
-import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord, getCreatorStats } from "./lib/api";
+import { saveAttemptGuesses, getPairStreaks, fetchTodaysDailyWord, getCreatorStats, hadDailyBetween } from "./lib/api";
 import { supabase } from "./lib/supabase";
 import { buildEmojiGrid } from "./utils/sharing";
-import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak } from "./utils/dailyStorage";
+import { computeDailyHeatState, saveDailyAttempt, updateDailyStreak, bridgeStreakOverEmptyDays } from "./utils/dailyStorage";
 import { buildMyWordRows, summarizeMyWords, getSeenMap } from "./utils/myWords";
 import type {
   Puzzle,
@@ -273,6 +273,7 @@ export default function App() {
     setDailyWordLoading(true);
     try {
       const meta = await fetchTodaysDailyWord();
+      await bridgeStreakOverEmptyDays(hadDailyBetween);
       setDailyWordMeta(meta);
       if (meta) {
         setDailyState(computeDailyHeatState(meta.scheduled_date));
