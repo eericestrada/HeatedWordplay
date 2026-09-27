@@ -11,7 +11,9 @@
 //   { action: "accept", word, definition, part_of_speech, difficulty? }
 //       -> { id }                   adds the word to the reserve
 //   { action: "reject", word }      -> { ok }  never suggest it again
-//   { action: "fill" }              -> { filled }  fill empty days now
+//   { action: "fill", days? }       -> { filled }  fill empty days now:
+//       days = N fills empty days in the next N (default 3); "all" keeps going
+//       until the reserve runs out
 //
 // Candidates are only looked up, never stored — nothing reaches the reserve
 // without an explicit accept.
@@ -301,6 +303,7 @@ function json(body: unknown, status = 200): Response {
 const WORD_RE = /^[A-Z]{4,8}$/;
 const MAX_SUGGEST = 30;
 const MAX_PASTE = 60;
+const MAX_FILL_DAYS = 3650;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -451,7 +454,12 @@ Deno.serve(async (req: Request) => {
       }
 
       case "fill": {
-        const { data, error } = await admin.rpc("fill_daily_schedule", {});
+        // fill_daily_schedule stops on its own once the reserve is empty, so
+        // "all" is just a horizon far enough out to never be the limit.
+        const days = body.days === "all"
+          ? MAX_FILL_DAYS
+          : Math.max(1, Math.min(MAX_FILL_DAYS, Math.round(Number(body.days) || 3)));
+        const { data, error } = await admin.rpc("fill_daily_schedule", { p_days: days });
         if (error) {
           console.error("fill_daily_schedule failed:", error);
           return json({ error: "Failed to fill the schedule" }, 500);

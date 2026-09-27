@@ -8,8 +8,12 @@ import {
 } from "../lib/api";
 import HouseImport from "./HouseImport";
 
-// Below this many reserve words, warn that auto-fill is running low.
-const LOW_RESERVE = 14;
+// Below this many days of cover (filled days ahead + reserve), warn.
+const LOW_COVER = 14;
+
+// How far "Fill empty days" reaches. "all" uses up the whole reserve.
+type FillSpan = 3 | 20 | "all";
+const FILL_SPANS: FillSpan[] = [3, 20, "all"];
 
 
 /** Generate an array of date strings (YYYY-MM-DD) for the next N days starting from today */
@@ -45,8 +49,7 @@ export default function EditorScheduleScreen() {
   const [importing, setImporting] = useState(false);
   const [filling, setFilling] = useState(false);
   const [notice, setNotice] = useState("");
-
-  const dates = getUpcomingDates(45);
+  const [fillSpan, setFillSpan] = useState<FillSpan>(3);
 
   const loadWords = useCallback(async () => {
     setLoading(true);
@@ -75,11 +78,26 @@ export default function EditorScheduleScreen() {
 
   // Build a date->word map for scheduled words
   const scheduledByDate: Record<string, DailyPoolWord> = {};
+  let lastScheduled = "";
   for (const w of allWords) {
     if (w.scheduled_date && (w.status === "scheduled" || w.status === "used")) {
       scheduledByDate[w.scheduled_date] = w;
+      if (w.scheduled_date > lastScheduled) lastScheduled = w.scheduled_date;
     }
   }
+
+  // Show at least 45 days, and far enough to see everything scheduled.
+  const todayStr = new Date().toISOString().split("T")[0];
+  const daysToLast = lastScheduled
+    ? Math.round((Date.parse(lastScheduled) - Date.parse(todayStr)) / 86_400_000) + 1
+    : 0;
+  const dates = getUpcomingDates(Math.max(45, daysToLast + 7));
+
+  // Consecutive days from today that already have a word, plus the reserve
+  // that will fill the days after: how long before Daily Heat goes dark.
+  let filledAhead = 0;
+  while (filledAhead < dates.length && scheduledByDate[dates[filledAhead]]) filledAhead++;
+  const coverDays = filledAhead + reserveCount;
 
   const handleSchedule = async (wordId: string, date: string) => {
     setSaving(wordId);
@@ -112,8 +130,14 @@ export default function EditorScheduleScreen() {
     setError("");
     setNotice("");
     try {
-      const { filled } = await fillScheduleNow();
-      setNotice(filled ? `Filled ${filled} empty day${filled === 1 ? "" : "s"}` : "No empty days to fill");
+      const { filled } = await fillScheduleNow(fillSpan);
+      setNotice(
+        filled
+          ? `Filled ${filled} empty day${filled === 1 ? "" : "s"}`
+          : fillSpan === "all"
+            ? "No empty days to fill"
+            : `No empty days in the next ${fillSpan}`,
+      );
       await refreshWords();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fill schedule");
@@ -123,12 +147,14 @@ export default function EditorScheduleScreen() {
   };
 
   // Send an auto-pick back to the reserve and let the scheduler draw another.
-  const handleSwap = async (wordId: string) => {
+  // Fill far enough out to reach the swapped day, wherever it is.
+  const handleSwap = async (wordId: string, date: string) => {
     setSaving(wordId);
     setError("");
     try {
       await unscheduleDailyWord(wordId);
-      await fillScheduleNow();
+      const daysOut = Math.round((Date.parse(date) - Date.parse(todayStr)) / 86_400_000) + 1;
+      await fillScheduleNow(Math.max(3, daysOut));
       await refreshWords();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to swap");
@@ -205,7 +231,7 @@ export default function EditorScheduleScreen() {
         className="rounded-xl flex flex-col gap-2"
         style={{
           background: "rgba(255,255,255,0.02)",
-          border: reserveCount < LOW_RESERVE
+          border: coverDays < LOW_COVER
             ? "1px solid rgba(255,100,100,0.25)"
             : "1px solid rgba(255,255,255,0.06)",
           padding: "16px",
@@ -224,32 +250,63 @@ export default function EditorScheduleScreen() {
               style={{
                 fontSize: "12px",
                 marginTop: "3px",
-                color: reserveCount < LOW_RESERVE ? "rgba(255,100,100,0.75)" : "rgba(255,255,255,0.35)",
+                color: coverDays < LOW_COVER ? "rgba(255,100,100,0.75)" : "rgba(255,255,255,0.35)",
               }}
             >
-              {reserveCount === 0
+              {coverDays === 0
                 ? "Empty \u2014 days with no word will stay dark. Import some words."
-                : reserveCount < LOW_RESERVE
-                  ? `Running low \u2014 about ${reserveCount} day${reserveCount === 1 ? "" : "s"} of cover left.`
-                  : "Picked at random for any day with no word, up to 3 days ahead."}
+                : coverDays < LOW_COVER
+                  ? `Running low \u2014 about ${coverDays} day${coverDays === 1 ? "" : "s"} of cover left.`
+                  : `About ${coverDays} days of cover. Empty days are auto-filled up to 3 days ahead.`}
             </div>
           </div>
-          <button
-            onClick={handleFillNow}
-            disabled={filling || reserveCount === 0}
-            className="font-body rounded-lg"
-            style={{
-              fontSize: "12px",
-              fontWeight: 500,
-              padding: "7px 12px",
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "rgba(255,255,255,0.03)",
-              color: filling || reserveCount === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.55)",
-              cursor: filling || reserveCount === 0 ? "default" : "pointer",
-            }}
-          >
-            {filling ? "Filling..." : "Fill empty days now"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* How far to fill: next 3 days, next 20, or the whole reserve */}
+            <div
+              role="radiogroup"
+              aria-label="How many days to fill"
+              className="flex rounded-lg overflow-hidden"
+              style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              {FILL_SPANS.map((span) => (
+                <button
+                  key={span}
+                  role="radio"
+                  aria-checked={fillSpan === span}
+                  onClick={() => setFillSpan(span)}
+                  title={span === "all" ? "Use every word in the reserve" : `Fill empty days in the next ${span}`}
+                  className="font-mono"
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "7px 9px",
+                    border: "none",
+                    background: fillSpan === span ? "rgba(255,180,60,0.12)" : "transparent",
+                    color: fillSpan === span ? "rgba(255,180,60,0.9)" : "rgba(255,255,255,0.4)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {span === "all" ? "All" : span}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleFillNow}
+              disabled={filling || reserveCount === 0}
+              className="font-body rounded-lg"
+              style={{
+                fontSize: "12px",
+                fontWeight: 500,
+                padding: "7px 12px",
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.03)",
+                color: filling || reserveCount === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.55)",
+                cursor: filling || reserveCount === 0 ? "default" : "pointer",
+              }}
+            >
+              {filling ? "Filling..." : fillSpan === "all" ? "Fill with all" : `Fill next ${fillSpan} days`}
+            </button>
+          </div>
           {!importing && (
             <button
               onClick={() => setImporting(true)}
@@ -454,7 +511,7 @@ export default function EditorScheduleScreen() {
                     )}
                     {scheduled.status === "scheduled" && !isPast && scheduled.source === "house" && (
                       <button
-                        onClick={() => handleSwap(scheduled.id)}
+                        onClick={() => handleSwap(scheduled.id, date)}
                         disabled={!!saving}
                         title="Swap for another House word"
                         aria-label="Swap for another House word"

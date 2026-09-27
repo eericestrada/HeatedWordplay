@@ -837,7 +837,10 @@ export async function rejectHouseWord(word: string) {
   return invokeWithRetry<{ ok: true }>("import-house-words", { action: "reject", word });
 }
 
-/** Fill empty days in the next few from the reserve right away. */
-export async function fillScheduleNow() {
-  return invokeWithRetry<{ filled: number }>("import-house-words", { action: "fill" });
+/**
+ * Fill empty days from the reserve right away: the next `days` days (default
+ * 3), or "all" to keep going until the reserve is used up.
+ */
+export async function fillScheduleNow(days: number | "all" = 3) {
+  return invokeWithRetry<{ filled: number }>("import-house-words", { action: "fill", days });
 }
