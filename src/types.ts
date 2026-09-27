@@ -44,6 +44,8 @@ export interface HouseCandidate {
   definition: string;
   /** 1 (very common) .. 10 (very rare); null when the word isn't in the frequency list */
   difficulty: number | null;
+  /** Every known sense, most common first; tapping one swaps it in */
+  senses?: Array<{ part_of_speech: string; definition: string }>;
 }
 
 export interface HouseCandidateBatch {

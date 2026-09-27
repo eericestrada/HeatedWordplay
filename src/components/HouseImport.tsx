@@ -110,6 +110,11 @@ export default function HouseImport({ onClose, onAccepted }: Props) {
     setQueue((q) => q.map((c) => (c.word === word ? { ...c, definition } : c)));
   };
 
+  const chooseSense = (word: string, s: { part_of_speech: string; definition: string }) => {
+    setEditing(null);
+    setQueue((q) => q.map((c) => (c.word === word ? { ...c, ...s } : c)));
+  };
+
   // Optimistic: drop the card now, put it back on the front if the call fails.
   const decide = useCallback(
     async (c: HouseCandidate, accept: boolean) => {
@@ -338,6 +343,39 @@ export default function HouseImport({ onClose, onAccepted }: Props) {
               >
                 {c.definition || <em style={{ color: "rgba(255,255,255,0.3)" }}>No definition — tap to add</em>}
               </button>
+            )}
+
+            {/* Other senses: tap one to use it instead */}
+            {c.senses && c.senses.length > 1 && (
+              <div className="flex flex-col gap-1">
+                {c.senses
+                  .filter((s) => s.definition !== c.definition)
+                  .map((s) => (
+                    <button
+                      key={s.part_of_speech + s.definition}
+                      onClick={() => chooseSense(c.word, s)}
+                      title="Use this definition"
+                      className="font-body text-left rounded-md"
+                      style={{
+                        fontSize: "12px",
+                        lineHeight: 1.45,
+                        color: "rgba(255,255,255,0.45)",
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px dashed rgba(255,255,255,0.08)",
+                        padding: "5px 8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        className="font-mono uppercase"
+                        style={{ fontSize: "9px", fontWeight: 600, color: "rgba(255,180,60,0.4)", marginRight: "6px" }}
+                      >
+                        {s.part_of_speech}
+                      </span>
+                      {s.definition}
+                    </button>
+                  ))}
+              </div>
             )}
 
             <div className="flex gap-2 justify-end">

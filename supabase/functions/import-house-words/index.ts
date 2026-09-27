@@ -15,6 +15,11 @@
 //
 // Candidates are only looked up, never stored — nothing reaches the reserve
 // without an explicit accept.
+//
+// Definitions come from the word_definitions table (WordNet, loaded once —
+// migration 024). The live dictionaries are only a fallback for pasted words
+// WordNet doesn't know: they can't keep up with bulk lookups (dictionaryapi.dev
+// outages, Wiktionary throttling Supabase's shared egress IPs).
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -169,11 +174,43 @@ const SKIP_POS = new Set(["proper noun", "abbreviation", "symbol", "letter", "pr
 const INFLECTION_RE =
   /^(\(.*?\)\s*)?(plural|simple past|past tense|past participle|present participle|third-person|alternative (form|spelling)|obsolete (form|spelling)|misspelling|archaic (form|spelling)|nonstandard|eye dialect|comparative|superlative)\b.*\bof\b/i;
 
+interface Sense {
+  part_of_speech: string;
+  definition: string;
+}
+
 interface Candidate {
   word: string;
   part_of_speech: string;
   definition: string;
   difficulty: number | null;
+  /** Every known sense, most common first, so the editor can pick another */
+  senses?: Sense[];
+}
+
+// WordNet senses for the given words, keyed by UPPERCASE word.
+async function offlineSenses(admin: SupabaseClient, words: string[]): Promise<Map<string, Sense[]>> {
+  const out = new Map<string, Sense[]>();
+  if (words.length === 0) return out;
+  const { data, error } = await admin
+    .from("word_definitions")
+    .select("word, sense_rank, part_of_speech, definition")
+    .in("word", words.map((w) => w.toLowerCase()))
+    .order("sense_rank");
+  if (error) {
+    console.error("word_definitions lookup failed:", error);
+    return out;
+  }
+  for (const r of data || []) {
+    const key = String(r.word).toUpperCase();
+    if (!out.has(key)) out.set(key, []);
+    out.get(key)!.push({ part_of_speech: r.part_of_speech, definition: r.definition });
+  }
+  return out;
+}
+
+function fromSenses(word: string, senses: Sense[], difficulty: number | null): Candidate {
+  return { word, ...senses[0], difficulty, senses };
 }
 
 type Checked =
@@ -301,23 +338,23 @@ Deno.serve(async (req: Request) => {
         const maxD = Math.max(minD, Math.min(10, Math.round(Number(body.max_difficulty) || 8)));
         const count = Math.max(1, Math.min(MAX_SUGGEST, Math.round(Number(body.count) || 20)));
 
-        // Rarer end of the range = lower zipf.
+        // Rarer end of the range = lower zipf. Every row already carries its
+        // WordNet senses, so there's nothing to look up.
         const { data, error } = await admin.rpc("suggest_house_candidates", {
           p_min_zipf: zipfForDifficulty(maxD + 0.5),
           p_max_zipf: zipfForDifficulty(minD - 0.5),
-          // Many frequency-list entries are names or slang the dictionary
-          // won't define — oversample so a batch still comes back full.
-          p_limit: count * 3,
+          p_limit: count,
         });
         if (error) {
           console.error("suggest_house_candidates failed:", error);
           return json({ error: "Couldn't load candidate words" }, 500);
         }
-        const words = (data || []).map((r: { word: string; zipf: number }) => ({
-          word: r.word.toUpperCase(),
-          difficulty: difficultyForZipf(r.zipf),
-        }));
-        return json(await collect(words, count));
+        const candidates = (data || [])
+          .filter((r: { senses: Sense[] | null }) => r.senses && r.senses.length > 0)
+          .map((r: { word: string; zipf: number; senses: Sense[] }) =>
+            fromSenses(r.word.toUpperCase(), r.senses, difficultyForZipf(r.zipf))
+          );
+        return json({ candidates, skipped: [] });
       }
 
       case "preview": {
@@ -345,21 +382,30 @@ Deno.serve(async (req: Request) => {
           .from("word_frequency").select("word, zipf")
           .in("word", fresh.map((w) => w.toLowerCase()));
         const zipfOf = new Map((freq || []).map((f: { word: string; zipf: number }) => [f.word, f.zipf]));
+        const difficultyOf = (w: string) => {
+          const z = zipfOf.get(w.toLowerCase());
+          return z == null ? null : difficultyForZipf(z);
+        };
 
-        const result = await collect(
-          fresh.map((w) => {
-            const z = zipfOf.get(w.toLowerCase());
-            return { word: w, difficulty: z == null ? null : difficultyForZipf(z) };
-          }),
-          fresh.length,
+        // WordNet first; only words it doesn't know go to the live dictionaries.
+        const offline = await offlineSenses(admin, fresh);
+        const known = fresh
+          .filter((w) => offline.has(w))
+          .map((w) => fromSenses(w, offline.get(w)!, difficultyOf(w)));
+        const unknown = fresh.filter((w) => !offline.has(w));
+
+        const live = await collect(
+          unknown.map((w) => ({ word: w, difficulty: difficultyOf(w) })),
+          unknown.length,
         );
+        const result = { ...live, candidates: [...known, ...live.candidates] };
         // Words the throttle cut off: tell the editor, so they can re-paste them.
         const reached = new Set([
           ...result.candidates.map((c) => c.word),
           ...result.skipped.map((s) => s.word),
         ]);
         const busy = result.throttled
-          ? fresh.filter((w) => !reached.has(w)).map((word) => ({ word, reason: "dictionary busy, try again" }))
+          ? unknown.filter((w) => !reached.has(w)).map((word) => ({ word, reason: "dictionary busy, try again" }))
           : [];
         return json({
           candidates: result.candidates,
